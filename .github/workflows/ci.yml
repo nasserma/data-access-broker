@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Tests with coverage gate (100%)
+        run: uv run pytest -q tests/ --cov=data_broker --cov-branch
+      - name: Backward-compatibility gate (core consumers unchanged)
+        run: |
+          uv run --project ../accessBrokerCore pytest -q
+          uv run --project ../groupwareAccessBroker pytest -q
+          uv run --project ../smarthomeAccessBroker pytest -q
+          uv run --project ../communicationsAccessBroker pytest -q

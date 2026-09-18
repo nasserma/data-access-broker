@@ -61,11 +61,23 @@ clean tree at S4-5; S4-6 closes the stage.
 
 ## Resumable state (for the next session)
 
-- S4-0..S4-6 COMPLETE. Remaining: (a) the closing sweep across the
-  suite (core, groupware, smarthome, comms re-run - the seam gate);
-  (b) Nasser's deferred end-of-line testing (this repo's DEPLOYMENT.md
-  verification order); (c) publication (owner; rotation precedes
-  publication for every repo).
+- S4-0..S4-6 COMPLETE; supervisory AI review of Stages 1-4 COMPLETE
+  (2026-09-18, verdict PASS WITH FINDINGS; Stages 1-3 verified clean).
+  Review findings and dispositions: (1) dual-surface battery env
+  hygiene — FIXED (monkeypatch + autouse fixture; 64 passed in a clean
+  env); (2) coverage gate 58% — raised to 94% / 215 passed (wall at
+  100%; remaining ~30 arms defensive-only, batteries exist);
+  (3) TRANSFER SURFACE (CLI + content-addressed staging + sha verify)
+  documented but NOT implemented — the remaining session-scale build
+  (port the nextcloud broker/cli.py pattern: two-token transfer route,
+  checkout/checkin, staging gc, exit codes 0-5); (4) low: README/
+  contract layout lists grants.py/audit.py/baselines.py facades that
+  do not exist (fix the docs at S4-6 amend, or add the facades);
+  (5) baselines.py docstring overstates max_suspension surfacing.
+- Also remaining: (a) owner deferred end-of-line testing (this repo's
+  DEPLOYMENT.md verification order); (b) publication (owner; rotation
+  precedes publication for every repo); (c) nextcloud supersession
+  migration AFTER Gate 8 + rotation (core MIGRATION_NOTES.md).
 - The nextcloud supersession migration is NOT in this stage (after
   Gate 8 + rotation; core MIGRATION_NOTES.md holds the migration cost
   record).

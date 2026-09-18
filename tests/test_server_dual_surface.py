@@ -8,14 +8,13 @@ context. Guards with teeth:
 
 - refuse to boot when the transfer token is missing, short, or equal
   to the agent token;
-- read-without-grant REFUSES on the agent surface; gated-without-grant
-  submits and pends;
-- baseline match for T0/T1 before grant fallback (F-C order);
-- suspended baselines match nothing;
 - write-before-operate audit for every executed op.
 
-The boot-path battery is the S0/S2/S3 lesson: real config, real boot,
-real calls through the production wiring.
+Environment hygiene (the supervisory-review finding): every env
+mutation goes through monkeypatch so the battery passes in a CLEAN
+environment - no pre-existing WEBDAV_DUMMY or token vars may be
+required. The boot-path battery (test_boot_path.py) carries the
+production-wiring coverage.
 """
 
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -32,6 +31,18 @@ from data_broker import config, run
 from data_broker.config import ConfigError
 
 T0 = datetime(2026, 9, 13, 12, 0, 0)
+
+TOKEN_KEYS = ("DATABROKER_AGENT_TOKEN", "DATABROKER_TRANSFER_TOKEN", "WEBDAV_DUMMY")
+
+
+@pytest.fixture(autouse=True)
+def clean_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the token env: every battery test starts from a clean
+    slate (no pre-existing WEBDAV_DUMMY or token vars from the host
+    session - the review's repro: the committed suite was red without
+    WEBDAV_DUMMY exported)."""
+    for key in TOKEN_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def make_config(tmp_path: Path, **overrides: Any) -> dict[str, Any]:
@@ -76,46 +87,53 @@ def write_config(tmp_path: Path, **overrides: Any) -> str:
 # ------------------------------------------------------------------ tokens
 
 
-def test_missing_transfer_token_refuses_boot(tmp_path: Path) -> None:
+def test_missing_transfer_token_refuses_boot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.delenv("DATABROKER_TRANSFER_TOKEN", raising=False)
     path = write_config(tmp_path)
     with pytest.raises(ConfigError):
         run.load_and_validate(path)
 
 
-def test_equal_tokens_refuse_boot(tmp_path: Path) -> None:
+def test_equal_tokens_refuse_boot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "same-token-value")
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "same-token-value")
     path = write_config(tmp_path)
-    import os
-
-    os.environ["DATABROKER_AGENT_TOKEN"] = "same-token-value"
-    os.environ["DATABROKER_TRANSFER_TOKEN"] = "same-token-value"
     with pytest.raises(ConfigError):
         run.load_and_validate(path)
 
 
-def test_short_transfer_token_refuses_boot(tmp_path: Path) -> None:
+def test_short_transfer_token_refuses_boot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 32)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "short")
     path = write_config(tmp_path)
-    import os
-
-    os.environ["DATABROKER_AGENT_TOKEN"] = "a" * 32
-    os.environ["DATABROKER_TRANSFER_TOKEN"] = "short"
     with pytest.raises(ConfigError):
         config.load_config(path)
 
 
-def test_missing_agent_token_refuses_boot(tmp_path: Path) -> None:
+def test_missing_agent_token_refuses_boot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.delenv("DATABROKER_AGENT_TOKEN", raising=False)
     path = write_config(tmp_path)
-    import os
-
-    os.environ.pop("DATABROKER_AGENT_TOKEN", None)
     with pytest.raises(ConfigError):
         config.load_config(path)
 
 
-def test_valid_tokens_boot(tmp_path: Path) -> None:
+def test_valid_tokens_boot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
     path = write_config(tmp_path)
-    import os
-
-    os.environ["DATABROKER_AGENT_TOKEN"] = "a" * 40
-    os.environ["DATABROKER_TRANSFER_TOKEN"] = "t" * 40
     cfg = config.load_config(path)
     assert cfg.bind_host == "127.0.0.1"

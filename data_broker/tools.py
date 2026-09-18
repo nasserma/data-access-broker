@@ -5,30 +5,18 @@ and transfer surface (check_access, read, write) behind separate
 tokens and path prefixes; bulk content never enters LLM context.
 
 THE ENFORCEMENT PATH (BrokerContext.execute) evaluates in the F-C
-normative order, no configuration changes it:
-
-1. tier classification via the registry (undeclared -> GATED);
-2. GATED ops: baseline NEVER matches; grant or request+pending;
-3. READ ops: an ACTIVE baseline of this principal matches -> proceed
-   (audit-logged as baseline use);
-4. suspended baselines match nothing (fallback to step 4);
-5. grant fallback: the core store's active_for();
-6. otherwise: read-without-grant REFUSES (no free-lane deviation here:
-   the free-lane invariant RETURNS in this domain, so T0/T1 reads
-   execute without a grant when no baseline covers them - the free
-   lane IS the tier model);
-7. gated-without-grant submits + notifies + pends.
-
-Write-before-operate audit for every executed op via the core audit
-log; the gate never raises across the tool boundary ({status:
-ok|refused|error|pending} envelope).
+normative order, no configuration changes it: tier classification
+first; gated ops never match baselines; baseline -> grant -> free
+lane for reads (the free-lane invariant returns in this file-class
+domain); write-before-operate audit; {ok|refused|error|pending}
+envelope that never leaks tracebacks.
 """
 
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from __future__ import annotations
-
 import asyncio
+import base64
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -402,6 +390,145 @@ def build_agent_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
         {"name": "revoke_access", "tier": 2, "handler": revoke_access},
         {"name": "read", "tier": 1, "handler": read_file},
     ]
+
+
+# ---------------------------------------------------------------------------
+# The transfer surface (D5): the second MCP surface behind its own token
+# ---------------------------------------------------------------------------
+
+
+def build_transfer_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
+    """The transfer surface: check_access, read, write — the only
+    sanctioned path for bulk content.
+
+    Contract (goal contract S4-5; ported from nextcloud-access-broker
+    broker/cli.py, GPL-3.0-or-later):
+
+    - read returns {status, content_b64, sha256, size}: the CLI
+      verifies both, then stages locally (content-addressed staging).
+    - write takes {content_b64, expected_sha256} and writes ONLY after
+      strict base64 decode + sha verification (verify-then-write). A
+      mismatch refuses before the backend call: treat as corrupt.
+    - the wall applies in full: no grant, REFUSED. Bulk content never
+      enters LLM context (this surface is addressed by the CLI holding
+      the transfer token, never by an agent tool call).
+    - write-before-operate audit via the gate.
+
+    Returns content in the envelope (content_b64): MCP over the
+    transfer surface, not through the agent context.
+    """
+
+    async def transfer_check_access(account: str, resource: str, op: str) -> dict[str, Any]:
+        """Tool check_access (transfer surface): grant status for one op."""
+        backend_family = ctx.accounts.get(account)
+        if backend_family is None:
+            return {"status": "refused", "reason": f"unknown account: {account!r}"}
+        grants = ctx.store.active_for(backend_family, account, resource, op)
+        return {
+            "status": "ok",
+            "active": [
+                {
+                    "request_number": g.request_number,
+                    "expires_at": g.expires_at.isoformat() if g.expires_at else None,
+                }
+                for g in grants
+            ],
+        }
+
+    async def transfer_write(
+        account: str, resource: str, content_b64: str, expected_sha256: str
+    ) -> dict[str, Any]:
+        """Tool write (transfer surface): strict base64 decode, verify
+        the expected sha, THEN write (verify-then-write). A mismatch
+        refuses before the backend call: treat as corrupt, never stage."""
+        backend_family = ctx.accounts.get(account)
+        if backend_family is None:
+            return {"status": "refused", "reason": f"unknown account: {account!r}"}
+        # Transfer-surface writes are grant-scoped: no grant REFUSES (exit
+        # 3 for the CLI - request access, never retry as-is); the CLI
+        # surfaces wall-refused so the agent can request access. Pending
+        # submission is the AGENT surface's path, not the CLI's.
+        grants = ctx.store.active_for(backend_family, account, resource, "write")
+        if not grants:
+            return {
+                "status": "refused",
+                "reason": "no active grant for write (transfer surface writes are grant-scoped)",
+            }
+
+        try:
+            content = base64.b64decode(content_b64, validate=True)
+        except Exception:  # noqa: BLE001 - strict decode, the CLI contract
+            return {"status": "refused", "reason": "content is not valid base64"}
+        actual = hashlib.sha256(content).hexdigest()
+        if actual != expected_sha256:
+            return {
+                "status": "refused",
+                "reason": f"sha256 mismatch: expected {expected_sha256}, got {actual}",
+            }
+
+        async def _call() -> dict[str, Any]:
+            backend = ctx.backend_for(account)
+            await backend.write(account, resource, content)
+            return {"status": "ok", "sha256": actual, "size": len(content)}
+
+        envelope = await ctx.execute(account, resource, "write", _call)
+        if envelope.get("status") == "ok":
+            envelope["sha256"] = actual
+            envelope["size"] = len(content)
+        return envelope
+
+    async def transfer_check_access_wrapper(account: str, resource: str, op: str) -> dict[str, Any]:
+        return await transfer_check_access(account, resource, op)
+
+    return [
+        {"name": "check_access", "tier": 1, "handler": transfer_check_access_wrapper},
+        {"name": "read", "tier": 1, "handler": _encode_read_entry(ctx)},
+        {"name": "write", "tier": 2, "handler": transfer_write},
+    ]
+
+
+def _encode_read_entry(inner_ctx: BrokerContext) -> Any:
+    """Read handler bound to a context (the entry wrapper).
+
+    DELIBERATE DEVIATION (recorded, SECURITY.md invariant 6 companion to
+    the communications broker's): file content is bulk-sensitive, so the
+    transfer surface does NOT ride the agent surface's free-lane
+    invariant. A read here is grant-scoped, never free — the nextcloud
+    broker's whole-file gating posture, which the D5 model exists for.
+    A read without a grant REFUSES (envelope refused, distinct reason)
+    instead of executing on the free lane.
+    """
+
+    async def _handler(account: str, resource: str) -> dict[str, Any]:
+
+        backend_family = inner_ctx.accounts.get(account)
+        if backend_family is None:
+            return {"status": "refused", "reason": f"unknown account: {account!r}"}
+        # Transfer-surface reads are grant-scoped, never free (see above).
+        grants = inner_ctx.store.active_for(backend_family, account, resource, "read")
+        if not grants:
+            return {
+                "status": "refused",
+                "reason": "no active grant for read (transfer surface reads are grant-scoped)",
+            }
+
+        async def _call() -> dict[str, Any]:
+            backend = inner_ctx.backend_for(account)
+            content = await backend.read(account, resource)
+            return {"status": "ok", "_content": content}
+
+        envelope = await inner_ctx.execute(account, resource, "read", _call)
+        if envelope.get("status") != "ok":
+            return {k: v for k, v in envelope.items() if k != "_content"}
+        content = envelope.pop("_content")
+        return {
+            **envelope,
+            "content_b64": base64.b64encode(content).decode(),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "size": len(content),
+        }
+
+    return _handler
 
 
 TOOL_REGISTRY: dict[str, int] = {}

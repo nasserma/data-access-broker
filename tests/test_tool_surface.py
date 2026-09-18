@@ -11,7 +11,6 @@ mkdir, request_access, check_access, revoke_access, read.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import asyncio
-from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -68,6 +67,7 @@ def ctx(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> BrokerContext:
     from datetime import UTC, datetime
 
     from access_broker_core.audit import AuditLog
+
     from data_broker import policy
 
     clock = lambda: datetime.now(UTC)  # noqa: E731 - battery clock

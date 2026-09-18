@@ -105,7 +105,6 @@ def test_webdav_full_backend_cycle() -> None:
 
     async def run() -> dict:
         await backend.connect("scratch")
-        out: dict = {}
         try:
             entries = await backend.list("scratch", "Docs")
             assert entries == [NodeInfo(name="a.txt", is_dir=False, size=7, modified=None)]
@@ -195,11 +194,6 @@ def _o_routes(overrides: dict | None = None) -> dict[tuple[str, str], httpx.Resp
     }
     routes.update(overrides or {})
     return routes
-    kwargs: dict = {"request": httpx.Request("GET", "http://x")}
-    if body is not None:
-        kwargs["content"] = json.dumps(body).encode()
-        kwargs["headers"] = {"Content-Type": "application/json"}
-    return httpx.Response(status, **kwargs)
 
 
 def test_onedrive_full_backend_cycle() -> None:

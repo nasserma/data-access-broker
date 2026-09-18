@@ -152,29 +152,28 @@ def test_sweep_loop_survives_sweep_failure(tmp_path: object) -> None:
     """The housekeeping loop logs sweep failures and never kills serving:
     one iteration driven by a core whose sweep raises."""
 
-    class _StopLoop(Exception):
-        pass
-
-    class _BoomCore:
+    class BoomCore:
         calls = 0
 
         async def sweep(self) -> None:
-            _BoomCore.calls += 1
+            BoomCore.calls += 1
             raise RuntimeError("injected sweep failure")
+
+    class StopLoopError(Exception):
+        """Drives one deterministic iteration of the sweep loop."""
 
     ticks = {"n": 0}
 
     async def _one_tick(_: float) -> None:
         ticks["n"] += 1
         if ticks["n"] > 1:
-            raise _StopLoop()
+            raise StopLoopError()
 
     async def run_once() -> None:
-        original_sleep = asyncio.sleep
         asyncio.sleep = _one_tick  # type: ignore[assignment]
         try:
-            await asyncio.wait_for(run._sweep_loop(_BoomCore()), timeout=2.0)
-        except (asyncio.TimeoutError, _StopLoop):
+            await asyncio.wait_for(run._sweep_loop(BoomCore()), timeout=2.0)
+        except (TimeoutError, StopLoopError):
             pass
         finally:
             import asyncio as _a
@@ -182,7 +181,7 @@ def test_sweep_loop_survives_sweep_failure(tmp_path: object) -> None:
             asyncio.sleep = _a.sleep
 
     asyncio.run(run_once())
-    assert _BoomCore.calls == 1
+    assert BoomCore.calls == 1
 
 
 def test_shutdown_best_effort() -> None:

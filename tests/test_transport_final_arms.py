@@ -152,7 +152,6 @@ def _connected_onedrive() -> GraphDriveBackend:
 
 
 def _json(status: int, body: object) -> httpx.Response:
-    import json
 
     return httpx.Response(status, content=__import__("json").dumps(body).encode(), headers={"Content-Type": "application/json"}, request=httpx.Request("GET", "http://x"))
 

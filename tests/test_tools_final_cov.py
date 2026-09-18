@@ -6,7 +6,6 @@ notify paths, and check_access entry arms. All deterministic.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import asyncio
-import contextlib
 from typing import Any
 
 import pytest
@@ -14,7 +13,6 @@ from access_broker_core.baselines import BaselineEngine
 from access_broker_core.grants import GrantStore
 
 from data_broker.tools import BrokerContext, _to_json
-
 
 # --------------------------------------------------------------- ctx fixture
 
@@ -55,6 +53,7 @@ def ctx(tmp_path: Any) -> Any:
     from datetime import UTC, datetime
 
     from access_broker_core.audit import AuditLog
+
     from data_broker import policy
 
     clock = lambda: datetime.now(UTC)  # noqa: E731 - battery clock
@@ -206,7 +205,7 @@ def test_check_access_lists_pending_and_active(ctx: Any) -> None:
         "j",
     )
     ctx.store.approve(number)
-    pended = ctx.store.submit(
+    ctx.store.submit(
         "hint2",
         [{"backend": "webdav", "account": "scratch", "resource": "X", "ops": ["write"]}],
         "j2",

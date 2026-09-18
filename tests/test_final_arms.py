@@ -11,7 +11,6 @@ import pytest
 import yaml
 
 from data_broker import run
-from data_broker.backends.base import AuthError, BackendUnavailable
 from data_broker.config import ConfigError
 
 
@@ -156,7 +155,9 @@ def test_gateway_unregistered_adapter_refuses_boot(
     cfg = _cfg(tmp_path)
     cfg["gateway"] = {"matrix": {"homeserver_url": "https://m", "user_id": "@b:x", "access_token_env": "WEBDAV_DUMMY", "room_id": "!r:x", "allowed_senders": ["@o:x"]}}
     path = _write(tmp_path, cfg)
-    with pytest.raises(Exception):
+    from access_broker_core.gateways import GatewayConfigError
+
+    with pytest.raises(GatewayConfigError):
         run.boot(path)
 
 

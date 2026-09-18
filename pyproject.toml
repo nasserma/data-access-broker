@@ -29,7 +29,7 @@ dev = [
     "pytest-cov>=5",
     "hypothesis>=6",
     "ruff>=0.6",
-    "webdav4>=1.0",
+    "webdav4>=0.10",
     "wsgidav>=4",
 ]
 

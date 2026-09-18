@@ -49,6 +49,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"data_broker/backends/base.py" = [
+    "N818",     # NotConnected/BackendUnavailable match the suite's established exception names (smarthome precedent)
+]
 "tests/*" = [
     "PLR2004",
     "ARG001",

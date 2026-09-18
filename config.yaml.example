@@ -1,0 +1,51 @@
+# data-access-broker configuration
+# Strict and fail-closed: unknown keys at any level are ConfigError.
+# Secrets are never written here, only referenced.
+
+bind_host: 127.0.0.1        # never wildcard (refuse-to-start)
+bind_port: 8471
+transport: http             # stdio|http
+
+auth:
+  oauth:                    # required for transport http (MCP 2026-07-28)
+    issuer: https://auth.example.com
+    audience: data-access-broker
+  # stdio deployments use this instead:
+  # stdio:
+  #   token_env: DATABROKER_AGENT_TOKEN
+
+storage:
+  data_dir: /data
+  grants_db: /data/grants.db
+  audit_log: /data/audit.jsonl
+
+# Two-token surface separation (D5): refuse-to-start enforced at load
+# AND at boot. The transfer token MUST be at least min_length chars AND
+# different from the agent token.
+tokens:
+  agent_env: DATABROKER_AGENT_TOKEN
+  transfer_env: DATABROKER_TRANSFER_TOKEN
+  min_length: 32
+
+accounts:
+  webdav:                   # generic RFC 4918 (Nextcloud/ownCloud/any DAV)
+    - name: personal
+      url: https://cloud.example.com/remote.php/dav/files/agent
+      username: agent
+      password_env: WEBDAV_PASSWORD_PERSONAL   # env var NAME, never a value
+      # verify_ssl: true
+  onedrive:                 # MS Graph drives (distinct token family from groupware)
+    - name: work
+      tenant_id: <entra-tenant-id>
+      client_id: <entra-client-id>
+      token_env: ONEDRIVE_TOKEN_WORK
+      # allow_write: false  # read-only posture default; write scope only when gated
+
+# Approval gateway: exactly ONE adapter (suite pattern).
+# gateway:
+#   matrix:
+#     homeserver_url: https://matrix.example.org
+#     user_id: "@brokerbot:example.org"
+#     access_token_env: MATRIX_TOKEN_BROKERBOT
+#     room_id: "!approvalroom:example.org"
+#     allowed_senders: ["@owner:example.org"]

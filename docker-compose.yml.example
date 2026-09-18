@@ -1,0 +1,21 @@
+# data-access-broker compose example
+services:
+  data-broker:
+    build: .
+    container_name: data-access-broker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8471:8471"
+    environment:
+      - DATABROKER_AGENT_TOKEN=${DATABROKER_AGENT_TOKEN}
+      - DATABROKER_TRANSFER_TOKEN=${DATABROKER_TRANSFER_TOKEN}
+      - WEBDAV_PASSWORD_PERSONAL=${WEBDAV_PASSWORD_PERSONAL}
+      - ONEDRIVE_TOKEN_WORK=${ONEDRIVE_TOKEN_WORK}
+      - DATABROKER_CONFIG=/config/config.yaml
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - data-broker-data:/data
+    # Host networking is NOT required: the DAV/Graph endpoints are
+    # reachable over the docker bridge network.
+volumes:
+  data-broker-data:

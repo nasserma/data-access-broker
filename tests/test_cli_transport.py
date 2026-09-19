@@ -37,12 +37,24 @@ class _BrokerStub:
                 stub.auth_headers.append(self.headers.get("Authorization", ""))
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length) if length else b"{}")
+                method = body.get("method", "")
                 name = body.get("params", {}).get("name", "")
-                if name in stub.bodies:
+                if method == "initialize":
+                    # the session contract: initialize first, session id
+                    # returned on that call (S5-4 CLI repair)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
-                    if not stub.auth_headers[:-1]:  # first request gets the session id
-                        self.send_header("Mcp-Session-Id", stub.session_id)
+                    self.send_header("Mcp-Session-Id", stub.session_id)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "jsonrpc": "2.0", "id": body.get("id"),
+                        "result": {"protocolVersion": "2026-07-28",
+                                   "capabilities": {},
+                                   "serverInfo": {"name": "stub", "version": "0"}},
+                    }).encode())
+                elif name in stub.bodies:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(json.dumps(stub.bodies[name]).encode())
                 else:
@@ -194,3 +206,40 @@ def test_gc_staging_removes_aged_entries(tmp_path: Any, monkeypatch: pytest.Monk
     assert any("old.bin" in p for p in removed)
     assert not old.exists()
     assert fresh.exists()
+
+
+def test_transfer_client_unreachable_broker() -> None:
+    """A dead socket raises CliError with the unreachable message
+    (the URLError arm; S5-4 coverage while wiring the initialize fix)."""
+    client = cli.TransferClient("http://127.0.0.1:1/transfer", "tok", timeout=1)
+    with pytest.raises(cli.CliError, match="unreachable"):
+        client.call_tool("read", {"account": "scratch", "resource": "x"})
+
+
+def test_transfer_client_http_error_500() -> None:
+    """A 500 from the broker raises CliError('broker HTTP 500') (the
+    non-401 HTTPError arm)."""
+    server = HTTPServer(("127.0.0.1", 0), _500_handler())
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = cli.TransferClient(
+            f"http://127.0.0.1:{server.server_address[1]}/transfer", "tok"
+        )
+        with pytest.raises(cli.CliError, match="broker HTTP 500"):
+            client.call_tool("read", {"account": "scratch", "resource": "x"})
+    finally:
+        server.shutdown()
+
+
+def _500_handler() -> type:
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *args: Any) -> None:
+            return None
+
+    return Handler

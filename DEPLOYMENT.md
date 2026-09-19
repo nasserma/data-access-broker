@@ -57,12 +57,20 @@ Verify in order:
 2. `check_access` answers ok through the MCP surface.
 3. A read/list executes free (the free-lane invariant returns in this
    file-class domain), audit-logged.
-4. A trash/move with no grant submits a pending request and posts to
-   the gateway.
+4. A trash/move with no grant submits a pending request; when a
+   gateway is configured it posts to the approval room (with no
+   gateway configured the request still pends — notification is
+   skipped silently by design; the S5-4 dry-run note).
 5. Approve via the gateway; the operation executes; the audit chain
-   verifies (`verify_chain`).
+   verifies (`verify_chain`). Without a live gateway, drive the same
+   decision seam the gateway core calls (store approve), as the
+   S5-4 dry-run does.
 6. Transfer-surface CLI: fetch a file, sha256 verifies, bulk content
-   confirmed absent from the LLM context.
+   confirmed absent from the LLM context. The CLI performs the MCP
+   initialize handshake once and echoes the session id (S5-4 repair:
+   a bare tools/call is rejected 400 by the session-stateful
+   transport). The transfer surface is served at /transfer behind
+   the transfer token on the same port as /mcp (the dual mount).
 
 ## 4. Versioning-dependent write policy
 

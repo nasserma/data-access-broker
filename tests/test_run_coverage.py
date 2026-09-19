@@ -170,8 +170,27 @@ def test_main_serves_with_gateway_threaded(
         monkeypatch.setattr(
             run, "build_server", _build_server_spy(real)
         )
-        run.main()  # must serve and exit cleanly with the gateway threaded
+
+        # main() now serves the DUAL app via uvicorn (S5-4 repair); stub
+        # the server so the test drives the wiring without binding 8471
+        served = {}
+
+        class _StubUvicornServer:
+            def __init__(self, config) -> None:
+                served["app"] = config.app
+
+            async def serve(self) -> None:
+                served["served"] = True
+
+        import uvicorn as _uvicorn
+
+        monkeypatch.setattr(_uvicorn, "Server", _StubUvicornServer)
+        run.main()  # must wire the dual app and exit cleanly
         assert captured["adapter_seen"] is True
+        assert served["served"] is True
+        # the dual app is the path dispatch with BOTH surfaces
+        routes = [p for p, _ in served["app"]._routes]  # noqa: SLF001
+        assert "/mcp" in routes and "/transfer" in routes
     finally:
         gw_mod._ADAPTER_BUILDERS.pop("matrix", None)
 

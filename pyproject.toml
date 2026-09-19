@@ -10,6 +10,7 @@ dependencies = [
     "access-broker-core",
     "mcp>=2.2",
     "pyyaml>=6",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +53,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"scratch_servers/*" = [
+    "PLC0415",  # bring-up/dry-run scripts: imports stay where the flow reads
+    "F841",
+    "SIM105",
+]
 "data_broker/backends/base.py" = [
     "N818",     # NotConnected/BackendUnavailable match the suite's established exception names (smarthome precedent)
 ]

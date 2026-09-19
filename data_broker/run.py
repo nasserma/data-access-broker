@@ -25,6 +25,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+import uvicorn
 from access_broker_core.audit import AuditLog
 from access_broker_core.baselines import BaselineEngine
 from access_broker_core.grants import GrantStore
@@ -33,7 +34,7 @@ from data_broker import config, policy, tools
 from data_broker.backends.onedrive import GraphAccount, GraphDriveBackend, StaticTokenProvider
 from data_broker.backends.webdav import WebDAVAccount, WebDAVBackend
 from data_broker.config import Config, ConfigError
-from data_broker.server import build_server, validate_bind_host
+from data_broker.server import build_dual_app, build_server, validate_bind_host
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +177,13 @@ async def _serve(
     bind: tuple[str, int],
     adapter=None,
     core=None,
+    dual_app=None,
 ) -> None:
-    """Serve MCP; run the gateway + sweep loop alongside; clean shutdown."""
+    """Serve MCP; run the gateway + sweep loop alongside; clean shutdown.
+
+    HTTP transport: serve the DUAL app (agent /mcp + transfer /transfer,
+    each behind its bearer token) with uvicorn; stdio: the agent surface
+    only (no transfer surface exists without HTTP)."""
     host, port = bind
     background: list[asyncio.Task] = []
     if adapter is not None:
@@ -187,6 +193,10 @@ async def _serve(
     try:
         if transport == "stdio":
             await server.run_stdio_async()
+        elif dual_app is not None:
+            config = uvicorn.Config(dual_app, host=host, port=port, log_level="info")
+            u_server = uvicorn.Server(config)
+            await u_server.serve()
         else:
             await server.run_streamable_http_async(host=host, port=port)
     finally:
@@ -197,10 +207,17 @@ def main() -> None:
     """Boot the broker; raises (refuse-to-start) on any validation failure."""
     path = os.environ.get("DATABROKER_CONFIG", "config.yaml")
     cfg = load_and_validate(path)
-    server, _ctx, bind, gateway = _boot(cfg)
+    server, ctx, bind, gateway = _boot(cfg)
     core = gateway[0] if gateway is not None else None
     adapter = gateway[1] if gateway is not None else None
-    asyncio.run(_serve(server, cfg.transport, bind, adapter=adapter, core=core))
+    dual = (
+        build_dual_app(cfg, ctx, cfg.tokens)
+        if cfg.transport != "stdio" and cfg.tokens is not None
+        else None
+    )
+    asyncio.run(
+        _serve(server, cfg.transport, bind, adapter=adapter, core=core, dual_app=dual)
+    )
 
 
 def boot(config_path: str) -> tuple[object, object]:

@@ -578,6 +578,7 @@ dependencies = [
     { name = "access-broker-core" },
     { name = "mcp" },
     { name = "pyyaml" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -602,6 +603,7 @@ requires-dist = [
     { name = "matrix-nio", marker = "extra == 'gateway-matrix'", specifier = ">=0.25" },
     { name = "mcp", specifier = ">=2.2" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 provides-extras = ["gateway-matrix"]
 
@@ -2076,8 +2078,8 @@ name = "uvicorn"
 version = "0.53.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "python_full_version < '3.12' or python_full_version >= '3.14' or sys_platform != 'emscripten'" },
-    { name = "h11", marker = "python_full_version < '3.12' or python_full_version >= '3.14' or sys_platform != 'emscripten'" },
+    { name = "click" },
+    { name = "h11" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5d/ad/04bbb797c84fc1f26cb171f7394716f4865ffb8d8c5e1eef42565c2dfa6b/uvicorn-0.53.0.tar.gz", hash = "sha256:a9356f0cb89b3b8621529c5d5eebd69bfe154f4c3f68b4cf2de47e45fa855c2e", size = 110881, upload-time = "2026-09-14T07:44:23.815Z" }
 wheels = [

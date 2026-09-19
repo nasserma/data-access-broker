@@ -115,15 +115,9 @@ class TransferClient:
         self._id = 0
         self._session_id: str | None = None
 
-    def call_tool(self, name: str, args: dict) -> dict:
-
-        self._id += 1
-        payload = {
-            "jsonrpc": "2.0",
-            "id": self._id,
-            "method": "tools/call",
-            "params": {"name": name, "arguments": args},
-        }
+    def _post(self, payload: dict, expect_session: bool = False) -> str:
+        """One JSON-RPC POST; returns the body text. Captures the MCP
+        session header when expect_session (the initialize call)."""
         data = json.dumps(payload).encode()
         headers = {
             "Content-Type": "application/json",
@@ -134,10 +128,9 @@ class TransferClient:
             headers["Mcp-Session-Id"] = self._session_id
         req = urllib.request.Request(self.url, data=data, headers=headers, method="POST")
         try:
-
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read().decode()
-                if self._session_id is None:
+                if expect_session and self._session_id is None:
                     self._session_id = resp.headers.get("Mcp-Session-Id")
         except urllib.error.HTTPError as exc:
             if exc.code == _HTTP_UNAUTHORIZED:
@@ -148,7 +141,39 @@ class TransferClient:
             raise CliError(f"broker HTTP {exc.code}") from exc
         except urllib.error.URLError as exc:
             raise CliError(f"broker unreachable: {exc.reason}") from exc
-        return self._parse_response(body)
+        return body
+
+    def _initialize(self) -> None:
+        """Streamable HTTP is session-stateful: a bare tools/call is
+        rejected with 400 'Missing session ID' (S5-4 dry-run finding).
+        Initialize once, capture the session header, echo it on every
+        call (the nextcloud CLI's contract, ported)."""
+        self._id += 1
+        self._post(
+            {
+                "jsonrpc": "2.0",
+                "id": self._id,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "clientInfo": {"name": "data-broker-cli", "version": CLI_VERSION},
+                },
+            },
+            expect_session=True,
+        )
+
+    def call_tool(self, name: str, args: dict) -> dict:
+        if self._session_id is None:
+            self._initialize()
+        self._id += 1
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._id,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": args},
+        }
+        return self._parse_response(self._post(payload))
 
     @staticmethod
     def _parse_response(body: str) -> dict:

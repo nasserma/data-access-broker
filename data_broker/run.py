@@ -45,15 +45,19 @@ def _utc_clock() -> datetime:
 
 
 def load_and_validate(path: str) -> Config:
-    """Load config and re-check the token guards (defense in depth)."""
+    """Load config and check the token section is present.
+
+    The token guards themselves (missing env, short transfer token,
+    equal tokens) live in config._parse_tokens and are fail-closed at
+    load — duplicated re-checks here would be unreachable dead code
+    shadowed by config's guards (fresh-context review finding). The
+    tokens-None refusal below is the reachable arm for a Config
+    constructed programmatically without a tokens section.
+    """
     cfg = config.load_config(path)
     if cfg.tokens is None:
         raise ConfigError("tokens: section is required (two-token model)")
     validate_bind_host(cfg.bind_host)
-    if len(cfg.tokens.transfer_token) < cfg.tokens.min_length:
-        raise ConfigError("tokens: transfer token shorter than min_length")
-    if cfg.tokens.agent_token == cfg.tokens.transfer_token:
-        raise ConfigError("tokens: transfer token must differ from the agent token")
     return cfg
 
 

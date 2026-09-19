@@ -65,20 +65,39 @@ clean tree at S4-5; S4-6 closes the stage.
   (2026-09-18, verdict PASS WITH FINDINGS; Stages 1-3 verified clean).
   Review findings and dispositions: (1) dual-surface battery env
   hygiene — FIXED (monkeypatch + autouse fixture; green in a clean
-  env); (2) coverage gate 58% — raised (batteries exist; the transfer
-  surface build added new modules that dilute the aggregate; per-
-  module coverage is the honest metric — wall 100%, server 100%,
-  backends 96-98%, tools 94%); (3) TRANSFER SURFACE — BUILT AND
-  COMMITTED (4ddf1ce): second MCP surface (check_access/read/write)
-  behind its own token, verify-then-write, content-addressed staging
-  CLI with exit codes 0-4, and the recorded deliberate deviation
-  (transfer-surface reads/writes grant-scoped, never free — the
-  nextcloud whole-file gating posture); (4) low: baselines.py
-  docstring overstates max_suspension surfacing (F-A default-OFF, the
-  schema omission is defensible).
-- Closing sweep after the transfer surface: core 477 / groupware
-  633+1skip / smarthome 294 / comms 272 / data 234 green. Repo
-  dc6262c..81ffc41 clean tree (changeover amend commit included).
+  env); (2) coverage gate 58% — batteries added; the transfer surface
+  build added new modules so the honest metric is PER-MODULE: wall
+  (policy.py) 100%, server 100%, backends 96-98%, tools 94%, run 94%,
+  config 87%, cli 79% (the fresh-context review caught the earlier
+  claim omitting cli.py at 49% — since closed by the real-HTTP
+  transport battery; the remaining cli gap is main()/argparse wiring
+  and arms already covered at flow level); (3) TRANSFER SURFACE —
+  BUILT AND COMMITTED (4ddf1ce): second MCP surface
+  (check_access/read/write) behind its own token, verify-then-write,
+  content-addressed staging CLI with exit codes 0-4, and the recorded
+  deliberate deviation (transfer-surface reads/writes grant-scoped,
+  never free — the nextcloud whole-file gating posture); (4)
+  baselines.py docstring — FIXED in the core after the fresh-context
+  pass found the docstring-vs-code mismatch untouched: the module now
+  states that no max_suspension mechanism is implemented (an
+  unimplemented knob would be worse than none) and that the budget
+  report is the SOLE zombie countermeasure (last_used_at absent by
+  design; usage lives in baseline_usage per F-B).
+- Fresh-context supervisory validation pass (2026-09-18, second
+  judge): PASS WITH FINDINGS — headline state fully verified (commits,
+  clean tree, five closing-sweep counts reproduced, ruff clean,
+  scratch-WebDAV integration tests really run and green). Its new
+  findings, now closed: per-module coverage claim omitted cli.py
+  (fixed by the transport battery + this record); gc_staging
+  deletion path untested (now tested in test_cli_transport.py);
+  run.py:54-56 dead re-checks shadowed by config guards (DELETED —
+  the suite rule under a 100% branch gate is delete, not freeze;
+  load_and_validate keeps only the reachable tokens-None arm,
+  docstring records why); prior finding 4 docstring (fixed above);
+  pytest.mark.integration unregistered (cosmetic, noted).
+- Closing sweep (fresh-context judge re-ran it): core 477 / groupware
+  633+1skip / smarthome 294 / comms 272 / data 241 green. Repo
+  dc6262c..(this commit) clean tree.
 - Also remaining: (a) owner deferred end-of-line testing (this repo's
   DEPLOYMENT.md verification order — including the transfer CLI
   fetch/push cycle); (b) publication (owner; rotation precedes

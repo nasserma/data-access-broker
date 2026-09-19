@@ -78,12 +78,38 @@ clean tree at S4-5; S4-6 closes the stage.
   schema omission is defensible).
 - Closing sweep after the transfer surface: core 477 / groupware
   633+1skip / smarthome 294 / comms 272 / data 234 green. Repo
-  dc6262c..4ddf1ce clean tree.
+  dc6262c..81ffc41 clean tree (changeover amend commit included).
 - Also remaining: (a) owner deferred end-of-line testing (this repo's
   DEPLOYMENT.md verification order — including the transfer CLI
   fetch/push cycle); (b) publication (owner; rotation precedes
   publication for every repo); (c) nextcloud supersession migration
   AFTER Gate 8 + rotation (core MIGRATION_NOTES.md).
+
+## Stage 5 (next session's opener — Nasser, 2026-09-18: "prepare for
+## stage 5. After reset.")
+
+- Next session starts by drafting the Stage 5 goal contract (LaTeX →
+  PDF via latex_build.py, the suite pattern: goal contract first, then
+  implementation on Nasser's gate).
+- Candidate scope items the draft must resolve (present candidates
+  with a recommended cut; DO NOT pick unilaterally):
+  1. Approval-gateway adapter wiring per broker (register_adapter is
+     core; adapters are per-broker; the data broker has none wired).
+  2. OneDrive live-tenant wiring (deployment-session task deferred in
+     S4-4: msal-backed token provider installs at config time).
+  3. Marked scratch-integration stragglers: scratch-Dendrite test for
+     comms, scratch-HA test for smarthome (bring up scratch_servers/,
+     run marked tests).
+  4. Owner end-of-line testing support (DEPLOYMENT.md verification
+     orders across the suite, including this repo's transfer CLI
+     fetch/push cycle).
+  5. Possibly: the nextcloud supersession decision (NOT the migration
+     itself — that stays after Gate 8 + rotation per the Stage 1g
+     finding; only the decision surface could belong here).
+- Nothing is committed for Stage 5 yet; no contract exists.
+- Fresh-context supervisory validation pass was dispatched at reset
+  (background); its verdict lands in the record and gates Stage 5
+  execution.
 - The nextcloud supersession migration is NOT in this stage (after
   Gate 8 + rotation; core MIGRATION_NOTES.md holds the migration cost
   record).

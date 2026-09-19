@@ -147,13 +147,13 @@ def test_gateway_unregistered_adapter_refuses_boot(
     tmp_path: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A gateway section naming an adapter this broker has not registered
-    refuses the boot (the core's registry gate; gateway wiring is a
-    deployment-session task with register_adapter)."""
+    refuses the boot (the core's registry gate; 'telegram' is not in the
+    data broker's adapter set, which registers 'matrix' at boot)."""
     monkeypatch.setenv("WEBDAV_DUMMY", "pw")
     monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
     monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
     cfg = _cfg(tmp_path)
-    cfg["gateway"] = {"matrix": {"homeserver_url": "https://m", "user_id": "@b:x", "access_token_env": "WEBDAV_DUMMY", "room_id": "!r:x", "allowed_senders": ["@o:x"]}}
+    cfg["gateway"] = {"telegram": {"chat_id": 1, "token_env": "WEBDAV_DUMMY", "allowed_senders": ["@o:x"]}}
     path = _write(tmp_path, cfg)
     from access_broker_core.gateways import GatewayConfigError
 
@@ -171,7 +171,7 @@ def test_serve_stdio_arm(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
     monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
     path = _write(tmp_path, _cfg(tmp_path, transport="stdio"))
-    server, _ctx, _bind = run._boot(run.load_and_validate(path))
+    server, _ctx, _bind, _gateway = run._boot(run.load_and_validate(path))
 
     called = {"stdio": 0}
 
@@ -183,12 +183,84 @@ def test_serve_stdio_arm(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> N
     assert called["stdio"] == 1
 
 
+def test_serve_with_gateway_starts_adapter_and_sweep(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_serve with a gateway wired: the adapter starts and the sweep
+    loop runs alongside the server (the S5-1 threading arm)."""
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
+    monkeypatch.setenv("DATABROKER_GATEWAY_TOKEN", "g" * 40)
+
+    import access_broker_core.gateways as gw_mod
+
+    import data_broker.gateways as broker_gw_mod
+
+    def fake_builder(core, fields, approver):
+        class FakeTransport:
+            async def send_message(self, text: str) -> str:
+                return "evt"
+
+            async def add_reaction(self, event_id: str, emoji: str) -> None:
+                return None
+
+        class FakeAdapter:
+            def __init__(self, core, transport) -> None:
+                self.core = core
+                self._transport = transport
+                self.calls: list[str] = []
+
+            async def start(self) -> None:
+                self.calls.append("start")
+
+            async def stop(self) -> None:
+                self.calls.append("stop")
+
+        adapter = FakeAdapter(core, FakeTransport())
+        core._transport = adapter._transport  # noqa: SLF001 - wiring
+        return adapter, fields["room_id"]
+
+    gw_mod.register_adapter("matrix", fake_builder)
+    monkeypatch.setattr(broker_gw_mod, "register_adapter", lambda *a, **k: None)
+    try:
+        cfg = _cfg(tmp_path)
+        cfg["gateway"] = {
+            "matrix": {
+                "homeserver_url": "https://m",
+                "user_id": "@approvals:x",
+                "access_token_env": "DATABROKER_GATEWAY_TOKEN",
+                "room_id": "!r:x",
+                "allowed_senders": ["@o:x"],
+            }
+        }
+        path = _write(tmp_path, cfg)
+        server, _ctx, _bind, gateway = run._boot(run.load_and_validate(path))
+        core, adapter = gateway
+
+        calls = {"http": 0}
+
+        async def _fake_http(host: str, port: int) -> None:
+            # yield once so the scheduled adapter-start task actually runs
+            # (the real server coroutine awaits I/O here)
+            await asyncio.sleep(0)
+            calls["http"] += 1
+
+        server.run_streamable_http_async = _fake_http  # type: ignore[method-assign]
+        asyncio.run(run._serve(server, "http", ("127.0.0.1", 8471), adapter=adapter, core=core))
+        assert calls["http"] == 1
+        assert adapter.calls[0] == "start"  # the gateway adapter actually started
+        assert adapter.calls[-1] == "stop"  # and shut down cleanly with the server
+    finally:
+        gw_mod._ADAPTER_BUILDERS.pop("matrix", None)
+
+
 def test_serve_http_arm(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WEBDAV_DUMMY", "pw")
     monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
     monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
     path = _write(tmp_path, _cfg(tmp_path))
-    server, ctx, bind = run._boot(run.load_and_validate(path))
+    server, ctx, bind, _gateway = run._boot(run.load_and_validate(path))
     called = {"n": 0}
 
     async def _fake_http(host: str, port: int) -> None:

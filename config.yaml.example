@@ -41,7 +41,10 @@ accounts:
       token_env: ONEDRIVE_TOKEN_WORK
       # allow_write: false  # read-only posture default; write scope only when gated
 
-# Approval gateway: exactly ONE adapter (suite pattern).
+# Approval gateway: exactly ONE adapter (suite pattern). Requires the
+# gateway-matrix extra (uv sync --extra gateway-matrix). The approval
+# account is a DEDICATED account: never a brokered account's identity,
+# never an agent/transfer token holder.
 # gateway:
 #   matrix:
 #     homeserver_url: https://matrix.example.org

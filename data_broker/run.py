@@ -47,16 +47,17 @@ def _utc_clock() -> datetime:
 def load_and_validate(path: str) -> Config:
     """Load config and check the token section is present.
 
-    The token guards themselves (missing env, short transfer token,
-    equal tokens) live in config._parse_tokens and are fail-closed at
-    load — duplicated re-checks here would be unreachable dead code
-    shadowed by config's guards (fresh-context review finding). The
-    tokens-None refusal below is the reachable arm for a Config
-    constructed programmatically without a tokens section.
+    All token guards (missing env, short transfer token, equal tokens,
+    and the missing-section refusal) live in config._parse_tokens and
+    are fail-closed at load — duplicated re-checks here would be
+    unreachable dead code shadowed by config's guards (fresh-context
+    review finding; the earlier tokens-None arm here was deleted for
+    the same reason: load_config refuses a missing section before this
+    function could ever see tokens=None). The tokens-None refusal that
+    remains reachable is _boot's re-check for a Config constructed
+    programmatically without a tokens section.
     """
     cfg = config.load_config(path)
-    if cfg.tokens is None:
-        raise ConfigError("tokens: section is required (two-token model)")
     validate_bind_host(cfg.bind_host)
     return cfg
 
@@ -104,8 +105,9 @@ def _build_backends(cfg: Config) -> tuple[dict[str, object], dict[str, str]]:
 def _boot(cfg: Config) -> tuple:
     """Synchronous boot: construct everything in the contract order.
 
-    Returns (server, ctx, transport_params); any failure raises
-    (refuse-to-start).
+    Returns (server, ctx, bind, gateway); any failure raises
+    (refuse-to-start). gateway is the (core, adapter) tuple when a
+    ``gateway:`` section is configured, else None.
     """
     validate_bind_host(cfg.bind_host)
     if cfg.tokens is None:
@@ -120,6 +122,9 @@ def _boot(cfg: Config) -> tuple:
 
     gateway = None
     if cfg.gateway is not None:
+        from data_broker.gateways import register_gateway_adapters  # noqa: PLC0415
+
+        register_gateway_adapters()
         from access_broker_core.gateways import build_gateway  # noqa: PLC0415
 
         gateway = build_gateway(cfg.gateway, store, _utc_clock, audit=audit)
@@ -135,7 +140,7 @@ def _boot(cfg: Config) -> tuple:
     )
 
     server = build_server(cfg, ctx)
-    return server, ctx, (cfg.bind_host, cfg.bind_port)
+    return server, ctx, (cfg.bind_host, cfg.bind_port), gateway
 
 
 def _sweep_loop(core) -> Any:
@@ -192,12 +197,14 @@ def main() -> None:
     """Boot the broker; raises (refuse-to-start) on any validation failure."""
     path = os.environ.get("DATABROKER_CONFIG", "config.yaml")
     cfg = load_and_validate(path)
-    server, _ctx, bind = _boot(cfg)
-    asyncio.run(_serve(server, cfg.transport, bind))
+    server, _ctx, bind, gateway = _boot(cfg)
+    core = gateway[0] if gateway is not None else None
+    adapter = gateway[1] if gateway is not None else None
+    asyncio.run(_serve(server, cfg.transport, bind, adapter=adapter, core=core))
 
 
 def boot(config_path: str) -> tuple[object, object]:
     """Programmatic boot used by tests/wrappers."""
     cfg = load_and_validate(config_path)
-    server, ctx, _bind = _boot(cfg)
+    server, ctx, _bind, _gateway = _boot(cfg)
     return server, ctx

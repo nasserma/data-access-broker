@@ -53,11 +53,17 @@ class NodeInfo:
 
 
 @runtime_checkable
-class StoreBackend(Protocol):
+class StoreBackend(Protocol):  # pragma: no cover - protocol declarations
     """The one domain model every adapter implements.
 
     All methods are native async (the wall judges before any of them
     runs; the gate owns ordering, the backend owns transport).
+
+    Coverage note (S6-3 H3): the protocol method stubs (`...`) are
+    declarations, not reachable logic - their implicit exit branches
+    are uncoverable by construction. Excluded under the suite's
+    pragma convention; the real coverage lives in each backend
+    (onedrive/webdav at 96-98%+) which these stubs type.
     """
 
     def connect(self, account: str) -> Awaitable[None]: ...

@@ -87,6 +87,18 @@ teeth:
    fail-closed for the write policy, documented in DEPLOYMENT.md, not
    improvised.
 
+### Declared custody classes (S6-2)
+
+The broker declares the custody class of every backend at boot
+(`build_custody_registry()` in `run.py`; an undeclared trust boundary
+refuses to start, and the audit chain carries the class on every
+executed operation):
+
+- **webdav — scoped.** App-password credential scoped to the store.
+- **onedrive — scoped.** Delegated Graph token under the app
+  registration with minimal scopes; scope-limited at the credential
+  source. The closest to properly scoped credentials in the suite.
+
 ## Reporting
 
 Personal-project alpha; report suspected vulnerabilities directly to

@@ -28,6 +28,7 @@ from typing import Any
 import uvicorn
 from access_broker_core.audit import AuditLog
 from access_broker_core.baselines import BaselineEngine
+from access_broker_core.custody import CustodyClass, CustodyRegistry
 from access_broker_core.grants import GrantStore
 
 from data_broker import config, policy, tools
@@ -103,6 +104,24 @@ def _build_backends(cfg: Config) -> tuple[dict[str, object], dict[str, str]]:
     return backends, accounts_map
 
 
+def build_custody_registry() -> CustodyRegistry:
+    """The data broker custody declarations (S6-2): the trust boundary
+    of every backend family, declared at boot.
+
+    webdav: app-password credential scoped to the store (SCOPED).
+    onedrive: delegated Graph token under the app registration with
+    minimal scopes (SCOPED) --- the closest to properly scoped
+    credentials in the suite. The empty registry refuses to start
+    (CustodyRegistry.validate), so an undeclared trust boundary can
+    never serve.
+    """
+    registry = CustodyRegistry()
+    registry.register("webdav", CustodyClass.SCOPED)
+    registry.register("onedrive", CustodyClass.SCOPED)
+    registry.validate()
+    return registry
+
+
 def _boot(cfg: Config) -> tuple:
     """Synchronous boot: construct everything in the contract order.
 
@@ -137,6 +156,7 @@ def _boot(cfg: Config) -> tuple:
         backends=backends,
         accounts=accounts_map,
         registry=registry,
+        custody=build_custody_registry(),
         core=(gateway[0] if gateway is not None else None),
     )
 

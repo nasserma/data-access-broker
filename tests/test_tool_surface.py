@@ -17,6 +17,7 @@ import pytest
 from access_broker_core.baselines import BaselineEngine
 from access_broker_core.grants import GrantStore
 
+from data_broker import run as run_mod
 from data_broker.backends.webdav import NodeInfo
 from data_broker.tools import BrokerContext, build_agent_tools, register_tools
 
@@ -83,6 +84,7 @@ def ctx(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> BrokerContext:
         backends={"webdav": backend, "onedrive": backend},
         accounts={"scratch": "webdav", "work": "onedrive"},
         registry=registry,
+        custody=run_mod.build_custody_registry(),
     )
 
 

@@ -12,6 +12,7 @@ import pytest
 from access_broker_core.baselines import BaselineEngine
 from access_broker_core.grants import GrantStore
 
+from data_broker import run as run_mod
 from data_broker.tools import BrokerContext, _to_json
 
 # --------------------------------------------------------------- ctx fixture
@@ -68,6 +69,7 @@ def ctx(tmp_path: Any) -> Any:
         backends={"webdav": FakeWebDAVBackend(), "onedrive": FakeWebDAVBackend()},
         accounts={"scratch": "webdav", "work": "onedrive"},
         registry=registry,
+        custody=run_mod.build_custody_registry(),
     )
 
 

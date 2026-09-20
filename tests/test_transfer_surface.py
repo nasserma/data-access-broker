@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 
+from data_broker import run as run_mod
 from data_broker.backends.webdav import NodeInfo
 from data_broker.tools import BrokerContext, build_transfer_tools
 
@@ -90,6 +91,7 @@ def ctx(tmp_path: Any) -> Any:
         backends={"webdav": FakeWebDAVBackend(), "onedrive": FakeWebDAVBackend()},
         accounts={"scratch": "webdav"},
         registry=registry,
+        custody=run_mod.build_custody_registry(),
     )
 
 

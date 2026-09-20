@@ -24,6 +24,7 @@ from typing import Any
 
 from access_broker_core.audit import AuditLog, LogWriteError
 from access_broker_core.baselines import BaselineEngine
+from access_broker_core.custody import CustodyRegistry
 from access_broker_core.grants import GrantStore
 from access_broker_core.policy import OperationClass
 
@@ -60,6 +61,7 @@ class BrokerContext:
     backends: dict[str, Any]  # backend family -> backend instance
     accounts: dict[str, str]  # account name -> backend family
     registry: wall.PolicyRegistry
+    custody: CustodyRegistry
     core: Any | None = None  # approval gateway notification entry point
     principal: str = "agent"
 
@@ -131,6 +133,7 @@ class BrokerContext:
                 then=_then,
                 backend=backend_family,
                 principal=who,
+                custody=self.custody.declared(backend_family),
             )
         except LogWriteError as exc:
             return {"status": "error", "error": f"audit write failed: {exc}"}
@@ -181,6 +184,7 @@ class BrokerContext:
                 reason="pending_approval",
                 backend=backend_family,
                 principal=self.principal,
+                custody=self.custody.declared(backend_family),
             )
         except (LogWriteError, ValueError) as exc:
             logger.warning("audit entry for pending request #%s failed: %s", number, exc)
@@ -285,6 +289,7 @@ def build_agent_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
                 reason="pending_approval",
                 backend=backend_family,
                 principal=ctx.principal,
+                custody=ctx.custody.declared(backend_family),
             )
         except (LogWriteError, ValueError) as exc:
             logger.warning("audit entry for request #%s failed: %s", number, exc)
@@ -351,6 +356,7 @@ def build_agent_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
             }
         revoked = ctx.store.revoke(request_number)
         try:
+            family = ctx.accounts.get(account)
             ctx.audit.record(
                 account=account,
                 resource="",
@@ -359,6 +365,7 @@ def build_agent_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
                 decision="revoked",
                 reason="revoked" if revoked else "not_revocable",
                 principal=ctx.principal,
+                custody=ctx.custody.declared(family) if family else None,
             )
         except (LogWriteError, ValueError) as exc:
             logger.warning("audit entry for revoke #%s failed: %s", request_number, exc)

@@ -31,7 +31,7 @@ from access_broker_core.baselines import BaselineEngine
 from access_broker_core.custody import CustodyClass, CustodyRegistry
 from access_broker_core.grants import GrantStore
 
-from data_broker import config, policy, tools
+from data_broker import config, policy, token_providers, tools
 from data_broker.backends.onedrive import GraphAccount, GraphDriveBackend, StaticTokenProvider
 from data_broker.backends.webdav import WebDAVAccount, WebDAVBackend
 from data_broker.config import Config, ConfigError
@@ -62,6 +62,19 @@ def load_and_validate(path: str) -> Config:
     cfg = config.load_config(path)
     validate_bind_host(cfg.bind_host)
     return cfg
+
+
+def _onedrive_provider(cfg: Config, entries: list[dict]) -> StaticTokenProvider:
+    """Config-gated token-provider selection (S6-2b): any entry carrying
+    ``token_provider: msal`` selects the production MsalTokenProvider
+    (per the first such entry's client_id/authority; the provider is
+    per-deployment); the default remains StaticTokenProvider (tests and
+    scratch, no network, no tenant). No tenant contact happens here."""
+    for entry in entries:
+        provider = token_providers.provider_from_config(entry, cfg.storage["data_dir"])
+        if provider is not None:
+            return provider  # type: ignore[return-value] - same TokenProvider boundary
+    return StaticTokenProvider()
 
 
 def _build_backends(cfg: Config) -> tuple[dict[str, object], dict[str, str]]:
@@ -95,7 +108,7 @@ def _build_backends(cfg: Config) -> tuple[dict[str, object], dict[str, str]]:
             for entry in onedrive_entries
         }
         backends["onedrive"] = GraphDriveBackend(
-            accounts=graph_accounts, token_provider=StaticTokenProvider()
+            accounts=graph_accounts, token_provider=_onedrive_provider(cfg, onedrive_entries)
         )
         for entry in onedrive_entries:
             accounts_map[entry["name"]] = "onedrive"

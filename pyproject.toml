@@ -9,6 +9,7 @@ authors = [{ name = "Nasser Mohieddin Abukhdeir" }]
 dependencies = [
     "access-broker-core",
     "mcp>=2.2",
+    "msal>=1.39.0",
     "pyyaml>=6",
     "uvicorn>=0.30",
 ]

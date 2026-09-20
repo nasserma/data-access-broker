@@ -31,7 +31,15 @@ AUTH_KEYS = {"oauth", "stdio"}
 STORAGE_KEYS = {"data_dir", "grants_db", "audit_log"}
 TOKEN_KEYS = {"agent_env", "transfer_env", "min_length"}
 WEBDAV_KEYS = {"name", "url", "username", "password_env", "verify_ssl"}
-ONEDRIVE_KEYS = {"name", "tenant_id", "client_id", "token_env", "allow_write"}
+ONEDRIVE_KEYS = {
+    "name",
+    "tenant_id",
+    "client_id",
+    "token_env",
+    "allow_write",
+    "token_provider",
+    "authority",
+}
 ENV_REF_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 
 
@@ -151,8 +159,25 @@ def _parse_accounts(raw: Any) -> dict[str, list[dict[str, Any]]]:
             _reject_unknown_keys(entry, keys, where)
             name = _require_str(entry, "name", where)
             entry["name"] = name
-            for key in keys - {"name", "verify_ssl", "allow_write"}:
+            for key in keys - {"name", "verify_ssl", "allow_write", "token_provider", "authority"}:
                 _require_str(entry, key, where)
+            if entry.get("token_provider") is not None:
+                tp = entry["token_provider"]
+                if tp != "msal":
+                    raise ConfigError(
+                        f"{where}: token_provider must be 'msal' when present (the "
+                        "default StaticTokenProvider is selected by omitting the key)"
+                    )
+            if entry.get("token_provider") == "msal":
+                if not entry.get("authority"):
+                    raise ConfigError(
+                        f"{where}: token_provider msal requires 'authority' (the Entra "
+                        "authority URL, e.g. https://login.microsoftonline.com/<tenant>)"
+                    )
+            elif entry.get("authority") is not None:
+                raise ConfigError(
+                    f"{where}: 'authority' is only valid with token_provider msal"
+                )
             entries.append(entry)
         if entries:
             out[family] = entries

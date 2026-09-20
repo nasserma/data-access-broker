@@ -43,6 +43,29 @@ Environment variables (from the example):
 - `DATABROKER_AGENT_TOKEN` / `DATABROKER_TRANSFER_TOKEN` — the surface
   tokens
 
+### OneDrive token provider selection (S6-2b)
+
+An `accounts.onedrive` entry selects its token provider by config:
+
+- default (no `token_provider` key): `StaticTokenProvider` from
+  `token_env` — tests, scratch, and any deployment holding a token out
+  of band. No network.
+- `token_provider: msal` (requires `client_id` and `authority`, e.g.
+  `https://login.microsoftonline.com/<tenant>`): the production
+  `MsalTokenProvider` (`data_broker/token_providers.py`) — device-code
+  flow, per-account cache at `<data_dir>/msal_cache_<account>.json`.
+  The backend never imports msal (asserted in the battery).
+
+Fail-closed contract: when MSAL demands interaction (no cache, expired
+refresh, consent), the provider raises `InteractionRequiredError`
+naming the account and the verification URI/code — the broker refuses
+rather than proceeding unauthenticated. The interactive device-code
+acquisition is OWNER-executed in his live-tenant stage (ruled
+2026-09-19): run the broker once with `token_provider: msal`, read the
+verification URI + code from the error, complete it on the tenant, and
+the cached token makes subsequent boots silent. The Entra app
+registration and tenant setup are also owner steps.
+
 ## 3. Boot and verification
 
 ```

@@ -4,8 +4,10 @@ Per the goal contract section 4: backends sit behind one domain model.
 A store is one named account's file namespace; a node is a normalized
 store node (the wall's path component tuple); content is bytes. Every
 backend implements the same five content verbs (the nextcloud layer's
-five verbs, generalized) plus capability probing at boot (R1: generic
-WebDAV drift degrades gracefully, fail-closed on unversioned stores).
+five verbs, generalized) plus capability probing at connect (R1:
+generic WebDAV drift degrades gracefully — class-1 DAV is
+refuse-to-connect; versioning-dependent write policy is design
+intent, not wired in v1).
 
 Errors are the typed backend hierarchy, never raw library exceptions:
 BackendError base; NotConnected before connect(); AuthError on 401/403;

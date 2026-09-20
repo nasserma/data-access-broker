@@ -22,12 +22,12 @@ verification at both ends.
 v1 backends:
 
 - **WebDAV** (the generic reference implementation): Nextcloud,
-  ownCloud, or any DAV server; per-store named accounts; capability
-  probing at boot; fail-closed on unversioned stores for write policy.
-- **OneDrive**: MS Graph drives via the msal/msgraph stack (the same
-  validated stack as the groupware broker, distinct token scope);
-  recorded-fixture testing with live-tenant wiring deferred to a
-  deployment session.
+  ownCloud, or any DAV server; per-store named accounts; class-1
+  capability probing at connect (refuse-to-connect on non-DAV).
+- **OneDrive**: MS Graph drives via the msal/httpx stack (raw Graph
+  REST over httpx, MSAL token providers; the same token boundary
+  family as the groupware broker); recorded-fixture testing with
+  live-tenant wiring deferred to a deployment session.
 
 ## The wall
 
@@ -56,10 +56,9 @@ in the store, never in config, and every mutation is itself gated.
     data_broker/
       config.py        YAML + env-indirected secrets; fail-closed boot
       policy.py        the wall: cross-provider path scoping + tier table
-      grants.py        re-export of the core grant store (generalized)
-      audit.py         re-export of the core audit log
-      baselines.py     baseline engine facade (core-backed)
+      token_providers.py  MSAL provider boundary (S6-2b)
       backends/        base.py (interface), webdav.py, onedrive.py
+      gateways/        matrix gateway adapter (core factory)
       tools.py         MCP tool surfaces (agent + transfer)
       server.py        MCPServer wiring, dual-surface routes
       run.py           boot ordering, refuse-to-start guards

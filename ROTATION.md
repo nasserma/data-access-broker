@@ -51,4 +51,10 @@ token).
 ## Never-rotated-here
 
 Scratch WebDAV tokens (`scratch_servers/`) are throwaway and die with
-the container. No other live credentials are held.
+the container.
+
+Gateway deployments hold one additional live credential: the Matrix
+approval-bot access token (`gateway.matrix.access_token_env`). Its
+rotation procedure is the homeserver's (revoke the device/session in
+the bot account, issue a new token, update the env var, restart); it
+is not per-store and has no expiry discipline of its own.

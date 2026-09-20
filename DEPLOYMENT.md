@@ -38,8 +38,8 @@ The two-token model is refuse-to-start enforced at load AND at boot:
   agent token, or the boot refuses
 
 Environment variables (from the example):
-- `WEBDAV_PASSWORD_SCRATCH` — the WebDAV app password per store
-- `ONEDRIVE_TOKEN_PERSONAL` — the Graph access token per account
+- `WEBDAV_PASSWORD_PERSONAL` — the WebDAV app password per store
+- `ONEDRIVE_TOKEN_WORK` — the Graph access token per account
 - `DATABROKER_AGENT_TOKEN` / `DATABROKER_TRANSFER_TOKEN` — the surface
   tokens
 
@@ -101,8 +101,11 @@ Direct writes where the backend versions: OneDrive keeps its own
 version history; WebDAV over a versioning store (Nextcloud versions)
 likewise. A backend WITHOUT versioning would require the
 per-operation approval discipline the smart home broker introduces;
-that case is documented here, not improvised. Capability probing at
-boot decides; unversioned stores are fail-closed for the write policy.
+that case is documented here, not improvised. v1 boundary (Stage 8
+disposition): WebDAV OPTIONS does not expose versioning, so the
+unversioned-store fail-closed write policy is DESIGN INTENT, not
+wired — the connect probe enforces class-1 DAV only. Grant-scoped
+writes (never free) are the operative control.
 
 ## 5. Baseline rollout notes
 

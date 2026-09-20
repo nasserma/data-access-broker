@@ -146,7 +146,22 @@ def _boot(cfg: Config) -> tuple:
     if cfg.tokens is None:
         raise ConfigError("tokens: section is required (two-token model)")
 
-    audit = AuditLog(cfg.storage["audit_log"], clock=_utc_clock)
+    audit = AuditLog(
+        cfg.storage["audit_log"],
+        clock=_utc_clock,
+        secrets=[
+            # Secret scrubbing (Stage 8 F-2 fix): refuse to record any
+            # credential-shaped value the broker holds — the two MCP
+            # surface bearer tokens plus every WebDAV account password.
+            cfg.tokens.agent_token,
+            cfg.tokens.transfer_token,
+            *[
+                value
+                for entry in cfg.accounts.get("webdav", [])
+                if (value := os.environ.get(entry.get("password_env", ""), ""))
+            ],
+        ],
+    )
     backends, accounts_map = _build_backends(cfg)
     registry = policy.build_registry()
     registry.validate()  # refuse-to-start: an unregistered wall must not serve
@@ -258,3 +273,7 @@ def boot(config_path: str) -> tuple[object, object]:
     cfg = load_and_validate(config_path)
     server, ctx, _bind, _gateway = _boot(cfg)
     return server, ctx
+
+
+if __name__ == "__main__":
+    main()

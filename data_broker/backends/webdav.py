@@ -100,9 +100,10 @@ class WebDAVBackend:
     """Generic WebDAV adapter (the v1 reference implementation).
 
     One instance per process; one HTTP client per account. Capability
-    probing at boot (OPTIONS) decides trash support (R1); an
-    unversioned store is fail-closed for the versioning-dependent write
-    policy, documented in DEPLOYMENT.md, not improvised.
+    probing at connect (OPTIONS): class-1 DAV is refuse-to-connect.
+    Versioning-dependent write policy (R1): design intent, documented
+    in DEPLOYMENT.md, not wired in v1 — OPTIONS does not expose
+    versioning; grant-scoped writes are the operative control.
     """
 
     def __init__(

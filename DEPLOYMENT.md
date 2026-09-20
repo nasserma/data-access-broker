@@ -125,6 +125,12 @@ boot decides; unversioned stores are fail-closed for the write policy.
 
 - Scratch WebDAV container (scratch_servers/webdav_scratch.py) first;
   the marked integration tests against it are the bring-up proof.
+  Record (2026-09-20 closing sweep, supervisory-review finding 2): the
+  2 marked tests were SKIPPED at the Stage 6 sweep because the scratch
+  server was down; the skip is recorded, not counted. Run them live
+  (`uv run python scratch_servers/webdav_scratch.py up`, then
+  `uv run pytest -m integration`) before any rotation/publication
+  work resumes.
 - Broker identity created BEFORE production wiring (§1).
 - Token rotation discipline: the transfer token is rotated like any
   suite credential; rotation precedes publication for every repo.

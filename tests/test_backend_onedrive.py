@@ -21,6 +21,7 @@ BackendUnavailable; everything else -> ProtocolError.
 from __future__ import annotations
 
 import asyncio
+import json as _json
 from typing import Any
 
 import httpx
@@ -206,3 +207,78 @@ def test_auth_failure_translates(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(AuthError):
         asyncio.run(run())
+
+
+# ------------------------------------------- schema-strict transport (S6-3 H1)
+
+
+def test_move_forwards_real_patch_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """H1: move's PATCH body carries exactly the fields the real Graph
+    update schema accepts (name + optional parentReference); the
+    forwarded shape is asserted, not assumed."""
+    monkeypatch.setenv("ONEDRIVE_TEST_TOKEN", "tok")
+    transport = RecordingTransport(
+        {
+            ("GET", "/v1.0/me/drive"): fixture_response(200, _DRIVE_ROOT),
+            ("PATCH", "/v1.0/me/drive/root:/Work/notes.txt"): fixture_response(200, {}),
+        }
+    )
+    backend = GraphDriveBackend(
+        accounts={"personal": make_account()},
+        token_provider=StaticTokenProvider("tok"),
+        http_client=httpx.AsyncClient(transport=transport),
+    )
+
+    async def run() -> None:
+        await backend.connect("personal")
+        try:
+            await backend.move("personal", "Work/notes.txt", "Work/renamed.txt")
+        finally:
+            await backend.close()
+
+    import asyncio as _asyncio
+
+    _asyncio.run(run())
+    method, path, body = transport.requests[-1]
+    assert (method, path) == ("PATCH", "/v1.0/me/drive/root:/Work/notes.txt")
+    sent = _json.loads(body or b"{}")
+    assert sent == {
+        "name": "renamed.txt",
+        "parentReference": {"path": "/drive/root:/Work"},
+    }
+
+
+def test_mkdir_forwards_real_post_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """H1: mkdir's POST body is the real Graph create-folder schema
+    (name, folder: {}, conflictBehavior fail)."""
+    monkeypatch.setenv("ONEDRIVE_TEST_TOKEN", "tok")
+    transport = RecordingTransport(
+        {
+            ("GET", "/v1.0/me/drive"): fixture_response(200, _DRIVE_ROOT),
+            ("POST", "/v1.0/me/drive/root:/Work:/children"): fixture_response(201, {"id": "n1"}),
+        }
+    )
+    backend = GraphDriveBackend(
+        accounts={"personal": make_account()},
+        token_provider=StaticTokenProvider("tok"),
+        http_client=httpx.AsyncClient(transport=transport),
+    )
+
+    async def run() -> None:
+        await backend.connect("personal")
+        try:
+            await backend.mkdir("personal", "Work/newdir")
+        finally:
+            await backend.close()
+
+    import asyncio as _asyncio
+
+    _asyncio.run(run())
+    method, path, body = transport.requests[-1]
+    assert (method, path) == ("POST", "/v1.0/me/drive/root:/Work:/children")
+    sent = _json.loads(body or b"{}")
+    assert sent == {
+        "name": "newdir",
+        "folder": {},
+        "@microsoft.graph.conflictBehavior": "fail",
+    }

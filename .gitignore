@@ -1,10 +1,11 @@
-__pycache__/
-*.pyc
-.pytest_cache/
+
+CHANGEOVER_*.md
 .coverage
 .hypothesis/
-.ruff_cache/
-
 # local-only governance (publication rule)
-CHANGEOVER_*.md
 MIGRATION_NOTES.md
+*.pyc
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+uv.lock

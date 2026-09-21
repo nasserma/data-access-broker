@@ -219,11 +219,44 @@ def _parse_auth(raw: Any, transport: str) -> dict[str, Any] | None:
     return {"oauth": oauth}
 
 
+class _NoDuplicateKeyLoader(yaml.SafeLoader):
+    """SafeLoader that refuses duplicate mapping keys: PyYAML's default
+    silently keeps the LAST duplicate key, which silently dropped whole
+    account sections (found live 2026-09-20: three `webdav:` keys under
+    `accounts:` — only the last one survived to the loader, the other
+    two instances vanished without any warning). Fail closed instead.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        seen: set = set()
+        for key_node, _value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                hashable = key in seen or not isinstance(key, (str, int, float, bool, type(None)))
+            except TypeError:  # unhashable key types
+                hashable = False
+            if isinstance(key, (str, int, float, bool)):
+                marker = key
+            else:
+                marker = id(key_node)
+            if marker in seen:
+                raise ConfigError(
+                    f"config: duplicate YAML key {key!r} in a mapping "
+                    "(yaml.safe_load would silently keep only the last)"
+                )
+            seen.add(marker)
+        return super().construct_mapping(node, deep=deep)
+
+
+def _load_yaml_no_duplicate_keys(fh) -> Any:
+    return yaml.load(fh, Loader=_NoDuplicateKeyLoader)
+
+
 def load_config(path: str) -> Config:
     """Load and validate configuration from a YAML file (fail-closed)."""
     try:
         with open(path, encoding="utf-8") as fh:  # noqa: PTH123 - small loader
-            raw = yaml.safe_load(fh)
+            raw = _load_yaml_no_duplicate_keys(fh)
     except FileNotFoundError as exc:
         raise ConfigError(f"config file not found: {path}") from exc
     except yaml.YAMLError as exc:

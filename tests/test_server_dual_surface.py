@@ -209,3 +209,48 @@ def test_distinct_names_still_load(
     path = write_config(tmp_path, accounts=accounts)
     cfg = config.load_config(path)
     assert len(cfg.accounts["webdav"]) == 4  # scratch + three
+
+
+# ------------------------------------------------- duplicate YAML keys
+
+
+def test_duplicate_yaml_keys_refuse(tmp_path, monkeypatch) -> None:
+    """yaml.safe_load silently keeps the LAST duplicate mapping key:
+    three `webdav:` sections under accounts lose the first two without
+    any warning (found live 2026-09-20 — two Nextcloud instances vanished
+    from the owner's running broker). The loader must refuse."""
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
+    cfg_text = """
+bind_host: 127.0.0.1
+bind_port: 8471
+transport: http
+auth:
+  oauth:
+    issuer: https://issuer
+    audience: data-access-broker
+storage:
+  data_dir: /tmp
+  grants_db: /tmp/g.db
+  audit_log: /tmp/a.jsonl
+tokens:
+  agent_env: DATABROKER_AGENT_TOKEN
+  transfer_env: DATABROKER_TRANSFER_TOKEN
+  min_length: 32
+accounts:
+  webdav:
+    - name: one
+      url: https://a
+      username: u
+      password_env: WEBDAV_DUMMY
+  webdav:
+    - name: two
+      url: https://b
+      username: u
+      password_env: WEBDAV_DUMMY
+"""
+    path = tmp_path / "dup.yaml"
+    path.write_text(cfg_text)
+    with pytest.raises(ConfigError, match="duplicate YAML key 'webdav'"):
+        config.load_config(str(path))

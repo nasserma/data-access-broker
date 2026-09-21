@@ -45,10 +45,12 @@ class FakeNioClient:
     def add_event_callback(self, cb, types):
         self.calls.append(("cb", types))
 
-    async def sync(self, timeout=None):
+    async def sync(self, timeout=None, sync_filter=None, since=None, full_state=None):
         if self.sync_raises:
             raise RuntimeError("sync blip")
+        self.calls.append(("sync", sync_filter, since, full_state))
         await asyncio.sleep(0.01)
+        return self.sync_result
 
     async def close(self):
         self.calls.append("close")
@@ -420,3 +422,43 @@ def test_builder_registers_with_core_registry() -> None:
     # cleanup: remove so other suites in-process are unaffected
     gw_mod._ADAPTER_BUILDERS.pop("matrix", None)
     assert build_matrix_adapter is not None
+
+
+@dataclass
+class OkSync:
+    next_batch: str = "s1"
+
+
+# ------------------------------------------------- D6g-parity: no history replay
+
+
+async def test_sync_loop_skips_history_then_tracks_since() -> None:
+    """The first sync carries the timeline-limit-0 filter (history
+    never dispatched); later syncs carry the since token (only
+    post-start events). Found live 2026-09-20: production room history
+    replayed into handle_reply on the first boot."""
+    core = RecordingCore()
+    gw = MatrixGateway(
+        core=core,
+        homeserver_url="https://matrix.example.org",
+        user_id="@approvals:example.org",
+        access_token="tok",
+        room_id=ROOM_ID,
+    )
+    fake = FakeNioClient(whoami_result=OkWhoami(), join_result=OkJoin(),
+                         send_result=OkSend())
+    fake.sync_result = OkSync(next_batch="tok-1")
+    gw._client = fake  # noqa: SLF001 - test wiring
+    task = asyncio.ensure_future(gw.start())
+    await asyncio.sleep(0.05)
+    gw._running = False  # flip the flag directly (stop() cancels the task)
+    await asyncio.wait_for(task, timeout=2)
+    syncs = [c for c in fake.calls if isinstance(c, tuple) and c[0] == "sync"]
+    assert len(syncs) >= 2
+    first = syncs[0]
+    assert first[1] is not None and first[1]["room"]["rooms"] == [ROOM_ID]  # the filter
+    assert first[1]["room"]["timeline"]["limit"] == 0
+    assert first[2] is None  # first sync: no since token
+    second = syncs[1]
+    assert second[1] is None  # no filter on later syncs
+    assert second[2] == "tok-1"  # since token carried

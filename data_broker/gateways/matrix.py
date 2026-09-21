@@ -137,9 +137,30 @@ class MatrixGateway:
         # _running is set True by start() before this task is created;
         # stop() flips it False and the loop exits after the in-flight
         # sync returns (the 141->exit branch).
+        # D6g-parity fix (found live 2026-09-20 on production): nio's
+        # FIRST sync (since=None) replays the room's whole timeline to
+        # callbacks even with full_state=False (verified against the
+        # scratch homeserver) — a production room with history would
+        # fire every historical typed command through handle_reply.
+        # The first sync therefore carries a timeline-limit-0 filter
+        # (history skipped, next_batch still returned) and every later
+        # sync carries the since token, so only post-start events are
+        # dispatched. The v1 nextcloud broker documented the same class
+        # (its D6g fix + _seen dedupe; the replay noise the state
+        # machine refused but never stopped firing).
+        since: str | None = None
+        room_filter = {"room": {"rooms": [self._room_id], "timeline": {"limit": 0}}}
         while self._running:
             try:
-                await self._client.sync(timeout=30000)
+                if since is None:
+                    resp = await self._client.sync(
+                        timeout=30000, sync_filter=room_filter, full_state=False
+                    )
+                else:
+                    resp = await self._client.sync(
+                        timeout=30000, since=since, full_state=False
+                    )
+                since = resp.next_batch
             except Exception:  # noqa: BLE001 - the room must not kill the process
                 logger.exception("matrix sync failed; retrying")
                 await asyncio.sleep(self.retry_delay)

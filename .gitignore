@@ -4,3 +4,7 @@ __pycache__/
 .coverage
 .hypothesis/
 .ruff_cache/
+
+# local-only governance (publication rule)
+CHANGEOVER_*.md
+MIGRATION_NOTES.md

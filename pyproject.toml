@@ -27,9 +27,6 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["data_broker"]
 
-[tool.uv.sources]
-access-broker-core = { path = "../accessBrokerCore", editable = true }
-
 [dependency-groups]
 dev = [
     "pytest>=8",

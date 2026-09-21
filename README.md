@@ -67,11 +67,15 @@ in the store, never in config, and every mutation is itself gated.
 
 ## Status
 
-Stage 4 of the suite plan; executes without owner testing per the
-standing instruction (2026-09-18) — owner deferred testing is the
-end-of-line gate. The deployed nextcloud-access-broker is untouched
-through its Gate 8 sequence; supersession is a separate migration
-task, decided only after both are stable (see core MIGRATION_NOTES.md).
+v0.1.1, deployed in production on a multi-instance Nextcloud
+deployment (2026-09-20) and verified end-to-end live: boot, both MCP
+surfaces, free-lane reads, the human-gated Tier-2 cycle (request →
+approval room → execute), grant revocation, and SHA-verified
+transfer-CLI round trips across three configured stores. Agents
+discover configured accounts via the list_accounts tool; supervision
+runs as a user-space systemd service. Supersession of the v1
+nextcloud-access-broker is a separate migration task (see core
+MIGRATION_NOTES.md).
 
 ## License
 

@@ -19,9 +19,7 @@ jobs:
         run: uv run ruff check .
       - name: Tests with coverage gate (100%)
         run: uv run pytest -q tests/ --cov=data_broker --cov-branch
-      - name: Backward-compatibility gate (core consumers unchanged)
-        run: |
-          uv run --project ../accessBrokerCore pytest -q
-          uv run --project ../groupwareAccessBroker pytest -q
-          uv run --project ../smarthomeAccessBroker pytest -q
-          uv run --project ../communicationsAccessBroker pytest -q
+      # The backward-compatibility gate (core consumers' suites unchanged)
+      # runs LOCALLY as a stage-close step: it needs the sibling workspace
+      # trees, which do not exist on hosted CI. CI-v1 covers this repo's
+      # own battery + coverage gate; see DEPLOYMENT.md for the local set.

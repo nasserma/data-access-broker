@@ -1,0 +1,3 @@
+[submodule "access-broker-core"]
+	path = access-broker-core
+	url = https://github.com/nasserma/access-broker-core.git

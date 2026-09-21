@@ -18,6 +18,8 @@ only the registered tool sets differ.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hmac
 from typing import Any
 
@@ -66,6 +68,17 @@ class BearerMiddleware:
         await self.app(scope, receive, send)
 
 
+class _CollectSend:
+    """ASGI send sink for the per-app lifespan fan-out: records the app's
+    lifespan responses (startup/shutdown complete/failed)."""
+
+    def __init__(self) -> None:
+        self.messages: list[dict] = []
+
+    async def __call__(self, message: dict) -> None:
+        self.messages.append(message)
+
+
 class PathDispatch:
     """D5: route the two MCP surfaces on ONE port by path prefix.
 
@@ -90,8 +103,70 @@ class PathDispatch:
             response = JSONResponse({"error": "not found"}, status_code=404)
             await response(scope, receive, send)
             return
-        for _prefix, app in self._routes:
-            await app(scope, receive, send)
+        # Non-HTTP (lifespan): EVERY wrapped surface's lifespan must run —
+        # but a single lifespan scope cannot be consumed by two Starlette
+        # apps: the first app drains the receive channel, so the second
+        # app's lifespan exits without completing startup and its session
+        # manager never runs (found live 2026-09-20: the /mcp agent app,
+        # sorted AFTER /transfer, 500'd 'Task group is not initialized'
+        # on the first request while /transfer answered). Each app gets
+        # its own replayed scope + fresh channels.
+        #
+        # Each app runs its lifespan against its OWN channel pair, driven
+        # concurrently from one upstream lifespan scope: upstream messages
+        # are broadcast to every app, and the first
+        # 'lifespan.startup.complete'/'failed' from any app is forwarded
+        # to the real send (uvicorn needs exactly one handshake answer;
+        # startup failures propagate immediately).
+        apps = [app for _p, app in self._routes]
+        upstream_done: list[bool] = [False]
+        upstream_events: list[dict] = []
+        waiting: list[asyncio.Future] = []
+        forwarded: list[bool] = [False]
+
+        async def pump() -> None:
+            """Consume the upstream lifespan channel and broadcast each
+            message to every waiting per-app receive."""
+            while True:
+                message = await receive()
+                upstream_events.append(message)
+                for fut in waiting:
+                    if not fut.done():
+                        fut.set_result(message)
+                waiting.clear()
+                if message.get("type") in ("lifespan.shutdown", "lifespan.shutdown.failed"):
+                    return
+
+        async def run_one(app) -> None:
+            index = {"n": 0}
+
+            async def app_receive() -> dict:
+                if index["n"] < len(upstream_events):
+                    message = upstream_events[index["n"]]
+                    index["n"] += 1
+                    return message
+                fut = asyncio.get_running_loop().create_future()
+                waiting.append(fut)
+                return await fut
+
+            async def app_send(message: dict) -> None:
+                mtype = message.get("type", "")
+                if mtype in ("lifespan.startup.complete", "lifespan.startup.failed"):
+                    if not forwarded[0]:
+                        forwarded[0] = True
+                        await send(message)
+                return
+
+            await app(dict(scope), app_receive, app_send)
+
+        pump_task = asyncio.ensure_future(pump())
+        try:
+            await asyncio.gather(*(run_one(app) for app in apps))
+        finally:
+            if not pump_task.done():
+                pump_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await pump_task
 
 
 def build_server(cfg: Any, broker_context: Any) -> MCPServer:

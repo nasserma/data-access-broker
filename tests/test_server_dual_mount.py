@@ -18,11 +18,14 @@ import json
 import os
 import socket
 import urllib.error
+
+import yaml
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from data_broker import server as server_mod
 from data_broker.server import (
     BearerMiddleware,
     PathDispatch,
@@ -233,3 +236,69 @@ async def test_build_dual_app_routes_both_surfaces(tmp_path: Path) -> None:
 
 def _st_err(body: bytes) -> str:
     return body.decode()[:200]
+
+
+# ------------------------------------------------- lifespan fan-out regression
+
+
+async def test_lifespan_initializes_both_session_managers(
+    tmp_path, monkeypatch
+) -> None:
+    """A single lifespan scope cannot be consumed by two Starlette apps:
+    the first app drained it, the second app's session manager never ran,
+    and requests to that surface 500'd 'Task group is not initialized'
+    (found live 2026-09-20: /mcp agent surface on production). The
+    dispatch must fan the lifespan to BOTH apps — each with its own
+    channel pair — and both managers must answer initialize."""
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
+    import yaml
+    cfg = {
+        "bind_host": "127.0.0.1",
+        "bind_port": 8471,
+        "transport": "http",
+        "auth": {"oauth": {"issuer": "https://issuer", "audience": "data-access-broker"}},
+        "storage": {
+            "data_dir": str(tmp_path / "data"),
+            "grants_db": str(tmp_path / "grants.sqlite3"),
+            "audit_log": str(tmp_path / "audit.jsonl"),
+        },
+        "accounts": {
+            "webdav": [
+                {
+                    "name": "scratch",
+                    "url": "http://127.0.0.1:8466",
+                    "username": "anonymous",
+                    "password_env": "WEBDAV_DUMMY",
+                }
+            ]
+        },
+        "tokens": {
+            "agent_env": "DATABROKER_AGENT_TOKEN",
+            "transfer_env": "DATABROKER_TRANSFER_TOKEN",
+            "min_length": 32,
+        },
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    from data_broker import run as run_mod
+
+    server, ctx, _bind, _gateway = run_mod._boot(run_mod.load_and_validate(str(path)))
+    loaded = run_mod.load_and_validate(str(path))
+    dual = server_mod.build_dual_app(loaded, ctx, loaded.tokens)
+
+    # drive the lifespan scope (startup only), as uvicorn would
+    sent: list[dict] = []
+    events: list[dict] = [{"type": "lifespan.startup"}]
+
+    async def receive():
+        return events.pop(0) if events else {"type": "lifespan.shutdown"}
+
+    async def send(message):
+        sent.append(message)
+
+    await dual({"type": "lifespan", "asgi": {"version": "3.0"}}, receive, send)
+    startup = [m for m in sent if m.get("type") == "lifespan.startup.complete"]
+    assert startup, sent
+    assert not [m for m in sent if m.get("type") == "lifespan.startup.failed"], sent

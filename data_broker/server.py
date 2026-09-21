@@ -119,7 +119,6 @@ class PathDispatch:
         # to the real send (uvicorn needs exactly one handshake answer;
         # startup failures propagate immediately).
         apps = [app for _p, app in self._routes]
-        upstream_done: list[bool] = [False]
         upstream_events: list[dict] = []
         waiting: list[asyncio.Future] = []
         forwarded: list[bool] = [False]
@@ -151,11 +150,10 @@ class PathDispatch:
 
             async def app_send(message: dict) -> None:
                 mtype = message.get("type", "")
-                if mtype in ("lifespan.startup.complete", "lifespan.startup.failed"):
-                    if not forwarded[0]:
-                        forwarded[0] = True
-                        await send(message)
-                return
+                startup = mtype in ("lifespan.startup.complete", "lifespan.startup.failed")
+                if startup and not forwarded[0]:
+                    forwarded[0] = True
+                    await send(message)
 
             await app(dict(scope), app_receive, app_send)
 

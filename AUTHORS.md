@@ -25,7 +25,7 @@ lineage, in order:
    "resource + operation" generalization and the baseline engine,
    landed in the core during Stage 4 (the December 2026 generalization
    window's vehicle, pulled forward on the owner's instruction).
-4. `smarthome-access-broker` — per-operation tier gating discipline
+4. `automation-access-broker` — per-operation tier gating discipline
    (T1 comfort free, T2 physical gated, T3 admin gated), boot-path
    regression suite pattern.
 5. `communications-access-broker` — gate porting pattern (read-

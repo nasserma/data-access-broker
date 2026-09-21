@@ -60,7 +60,7 @@ ignore = [
     "SIM105",
 ]
 "data_broker/backends/base.py" = [
-    "N818",     # NotConnected/BackendUnavailable match the suite's established exception names (smarthome precedent)
+    "N818",     # NotConnected/BackendUnavailable match the suite's established exception names (automation broker precedent)
 ]
 "tests/*" = [
     "PLR2004",

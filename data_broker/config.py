@@ -231,14 +231,7 @@ class _NoDuplicateKeyLoader(yaml.SafeLoader):
         seen: set = set()
         for key_node, _value_node in node.value:
             key = self.construct_object(key_node, deep=deep)
-            try:
-                hashable = key in seen or not isinstance(key, (str, int, float, bool, type(None)))
-            except TypeError:  # unhashable key types
-                hashable = False
-            if isinstance(key, (str, int, float, bool)):
-                marker = key
-            else:
-                marker = id(key_node)
+            marker = key if isinstance(key, (str, int, float, bool)) else id(key_node)
             if marker in seen:
                 raise ConfigError(
                     f"config: duplicate YAML key {key!r} in a mapping "

@@ -18,12 +18,11 @@ import json
 import os
 import socket
 import urllib.error
-
-import yaml
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from data_broker import server as server_mod
 from data_broker.server import (
@@ -146,8 +145,6 @@ async def test_build_dual_app_routes_both_surfaces(tmp_path: Path) -> None:
     """The assembled dual app: /transfer with the TRANSFER token reaches
     the transfer surface (tools/call 'check_access' answers), and the
     agent token is refused there (cross-token dies at the middleware)."""
-    import yaml
-
     from data_broker import run as run_mod
 
     os.environ.setdefault("WEBDAV_DUMMY", "pw")
@@ -253,7 +250,6 @@ async def test_lifespan_initializes_both_session_managers(
     monkeypatch.setenv("WEBDAV_DUMMY", "pw")
     monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
     monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
-    import yaml
     cfg = {
         "bind_host": "127.0.0.1",
         "bind_port": 8471,

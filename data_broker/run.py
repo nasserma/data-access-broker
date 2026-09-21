@@ -226,6 +226,8 @@ async def _serve(
     adapter=None,
     core=None,
     dual_app=None,
+    backends: dict | None = None,
+    accounts_map: dict | None = None,
 ) -> None:
     """Serve MCP; run the gateway + sweep loop alongside; clean shutdown.
 
@@ -233,6 +235,15 @@ async def _serve(
     each behind its bearer token) with uvicorn; stdio: the agent surface
     only (no transfer surface exists without HTTP)."""
     host, port = bind
+    # F1-parity fix (found live 2026-09-20 on production): backends were
+    # constructed at boot but never connect()ed — every operation died on
+    # 'backend not connected; call connect() first' while the S5-4
+    # dry-run's manual connect() masked it. Connect every configured
+    # account BEFORE serving (fail closed: an unreachable store refuses
+    # the boot, never serves half-wired).
+    if backends and accounts_map:
+        for account, family in accounts_map.items():
+            await backends[family].connect(account)
     background: list[asyncio.Task] = []
     if adapter is not None:
         background.append(asyncio.ensure_future(adapter.start()))
@@ -264,7 +275,16 @@ def main() -> None:
         else None
     )
     asyncio.run(
-        _serve(server, cfg.transport, bind, adapter=adapter, core=core, dual_app=dual)
+        _serve(
+            server,
+            cfg.transport,
+            bind,
+            adapter=adapter,
+            core=core,
+            dual_app=dual,
+            backends=ctx.backends,
+            accounts_map=ctx.accounts,
+        )
     )
 
 

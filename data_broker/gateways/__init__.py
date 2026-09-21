@@ -43,6 +43,14 @@ def build_matrix_adapter(core, fields: dict, approver: str):
         access_token=fields["access_token"],
         room_id=fields["room_id"],
     )
+    # The core is constructed with _PlaceholderTransport (the wiring-bug
+    # guard); the adapter's real transport must be rebound here or every
+    # typed reply/notification dies on the placeholder. The groupware
+    # builder carries this rebind (suite reference); the data broker's
+    # factory battery never asserted it — found live on the owner's
+    # first production gateway boot (2026-09-20).
+    if hasattr(core, "_transport"):  # test doubles may lack the attribute
+        core._transport = adapter._transport  # noqa: SLF001 - construction wiring
     return adapter, fields["room_id"]
 
 

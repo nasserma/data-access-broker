@@ -323,3 +323,48 @@ async def test_gateway_boot_end_to_end_notify_and_decide(gateway_boot: tuple) ->
     # the owner replies; the decision commits through the store (one-time CAS)
     await core.handle_reply("@owner:example.org", f"approve {number}")
     assert await core.request_state(number) is RequestState.ACTIVE
+
+
+# ------------------------------------------------- gateway transport rebind
+
+
+async def test_build_gateway_rebinds_core_transport(monkeypatch) -> None:
+    """The REAL matrix builder (registered through build_gateway) must
+    rebind the core off the placeholder transport — a typed reply would
+    otherwise die on the placeholder guard (found live 2026-09-20 on the
+    owner's first production gateway boot; the fake-builder boot test
+    rebinds internally, so it never caught this)."""
+    from access_broker_core.gateways import _PlaceholderTransport, build_gateway
+    from access_broker_core.grants import GrantStore
+
+    from data_broker import policy
+    from data_broker.gateways import register_gateway_adapters
+
+    monkeypatch.setenv("DATABROKER_GATEWAY_TOKEN", "g" * 40)
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="gwrebind-")
+    store = GrantStore(f"{tmp}/g.db", clock=lambda: None, registry=policy.build_registry())
+    register_gateway_adapters()
+    try:
+        core, adapter = build_gateway(
+            {
+                "matrix": {
+                    "homeserver_url": "https://matrix.example.org",
+                    "user_id": "@approvals:example.org",
+                    "access_token_env": "DATABROKER_GATEWAY_TOKEN",
+                    "room_id": "!approvals:example.org",
+                    "allowed_senders": ["@owner:example.org"],
+                }
+            },
+            store=store,
+            clock=lambda: None,
+        )
+        assert isinstance(core._transport, _PlaceholderTransport) is False  # noqa: SLF001
+        assert core._transport is adapter._transport  # noqa: SLF001
+        # and the wire is live: a send goes to the nio-backed transport,
+        # not the loud placeholder
+        assert callable(core._transport.send_message)
+    finally:
+        from access_broker_core import gateways as gw_mod
+
+        gw_mod._ADAPTER_BUILDERS.pop("matrix", None)

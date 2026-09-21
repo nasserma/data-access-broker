@@ -387,6 +387,21 @@ def build_agent_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
 
         return await ctx.execute(account, resource, "read", _call)
 
+    async def list_accounts() -> dict[str, Any]:
+        """Tool list_accounts: account discovery (the D6.5 discipline,
+        ported from nextcloud-access-broker's list_instances). Reveals
+        account NAMES and their backend FAMILY only — never URLs,
+        usernames, credential material, or tenant identifiers. An agent
+        deciding where to operate needs the names; everything beyond a
+        name is configuration the owner holds."""
+
+        return {
+            "status": "ok",
+            "accounts": [
+                {"name": name, "backend": family} for name, family in ctx.accounts.items()
+            ],
+        }
+
     return [
         {"name": "list", "tier": 1, "handler": list_dir},
         {"name": "move", "tier": 2, "handler": move_node},
@@ -396,6 +411,7 @@ def build_agent_tools(ctx: BrokerContext) -> list[dict[str, Any]]:
         {"name": "check_access", "tier": 1, "handler": check_access},
         {"name": "revoke_access", "tier": 2, "handler": revoke_access},
         {"name": "read", "tier": 1, "handler": read_file},
+        {"name": "list_accounts", "tier": 1, "handler": list_accounts},
     ]
 
 

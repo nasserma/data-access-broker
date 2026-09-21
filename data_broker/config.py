@@ -183,6 +183,27 @@ def _parse_accounts(raw: Any) -> dict[str, list[dict[str, Any]]]:
             out[family] = entries
     if not out:
         raise ConfigError("accounts: at least one store account is required")
+    # Cross-family AND within-family name uniqueness (the H2 invariant,
+    # suite pattern): key membership and identity are different
+    # invariants - two accounts with the same name both parse, and the
+    # boot's accounts maps (dict comprehensions) keep the LAST one,
+    # silently routing requests to the wrong instance or family. Fail
+    # closed at load.
+    seen: dict[str, str] = {}
+    for family, entries in out.items():
+        for entry in entries:
+            name = entry["name"]
+            if name in seen:
+                raise ConfigError(
+                    f"accounts: duplicate account name {name!r} "
+                    + (
+                        f"in {family} (and previously in {seen[name]})"
+                        if seen[name] != family
+                        else f"in {family}"
+                    )
+                    + " (account names must be unique across all backend families)"
+                )
+            seen[name] = family
     return out
 
 

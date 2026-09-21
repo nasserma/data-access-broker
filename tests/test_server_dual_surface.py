@@ -137,3 +137,75 @@ def test_valid_tokens_boot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     path = write_config(tmp_path)
     cfg = config.load_config(path)
     assert cfg.bind_host == "127.0.0.1"
+
+
+# ------------------------------------------------------- account name uniqueness
+
+
+def test_duplicate_webdav_names_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Within-family duplicates: the boot's dict comprehension keeps the
+    LAST entry, so a repeat name silently reroutes requests. Fail closed
+    at load (the H2 invariant)."""
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
+    accounts = make_config(tmp_path)["accounts"]
+    accounts["webdav"].append(
+        {
+            "name": "scratch",
+            "url": "http://127.0.0.1:9999",
+            "username": "other",
+            "password_env": "WEBDAV_DUMMY",
+        }
+    )
+    path = write_config(tmp_path, accounts=accounts)
+    with pytest.raises(ConfigError, match="duplicate account name"):
+        config.load_config(path)
+
+
+def test_duplicate_cross_family_names_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-family duplicates: a webdav account and an onedrive account
+    sharing a name both parse; the accounts map keeps one. Refuse at
+    load."""
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
+    monkeypatch.setenv("ONEDRIVE_DUMMY", "tok")
+    accounts = make_config(tmp_path)["accounts"]
+    accounts["onedrive"] = [
+        {
+            "name": "scratch",
+            "tenant_id": "00000000-0000-0000-0000-000000000000",
+            "client_id": "00000000-0000-0000-0000-000000000001",
+            "token_env": "ONEDRIVE_DUMMY",
+        }
+    ]
+    path = write_config(tmp_path, accounts=accounts)
+    with pytest.raises(ConfigError, match="duplicate account name"):
+        config.load_config(path)
+
+
+def test_distinct_names_still_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Three named instances (the owner's real shape) load cleanly."""
+    monkeypatch.setenv("WEBDAV_DUMMY", "pw")
+    monkeypatch.setenv("DATABROKER_AGENT_TOKEN", "a" * 40)
+    monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
+    accounts = make_config(tmp_path)["accounts"]
+    for i, name in enumerate(("personal", "work", "org")):
+        accounts["webdav"].append(
+            {
+                "name": name,
+                "url": f"http://127.0.0.1:900{i}",
+                "username": "anonymous",
+                "password_env": "WEBDAV_DUMMY",
+            }
+        )
+    path = write_config(tmp_path, accounts=accounts)
+    cfg = config.load_config(path)
+    assert len(cfg.accounts["webdav"]) == 4  # scratch + three

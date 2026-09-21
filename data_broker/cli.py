@@ -43,7 +43,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "0.1.0"
+CLI_VERSION = "0.1.1"
 
 EXIT_OK = 0
 EXIT_LOCAL = 1

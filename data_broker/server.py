@@ -96,7 +96,7 @@ class PathDispatch:
 
 def build_server(cfg: Any, broker_context: Any) -> MCPServer:
     """Construct the MCPServer with the registered agent surface."""
-    server = MCPServer(name="data-access-broker", version="0.1.0")
+    server = MCPServer(name="data-access-broker", version="0.1.1")
     tools.register_tools(server, broker_context)
     return server
 
@@ -115,7 +115,7 @@ def build_dual_app(cfg: Any, broker_context: Any, tokens: Any) -> PathDispatch:
     cfg.tokens.transfer_token (resolved at load)."""
     agent_server = build_server(cfg, broker_context)
 
-    transfer_server = MCPServer(name="data-access-broker-transfer", version="0.1.0")
+    transfer_server = MCPServer(name="data-access-broker-transfer", version="0.1.1")
     for spec in tools.build_transfer_tools(broker_context):
         transfer_server.add_tool(
             spec["handler"], name=spec["name"], description=spec["name"]

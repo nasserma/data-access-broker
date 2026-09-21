@@ -1,6 +1,6 @@
 [project]
 name = "data-access-broker"
-version = "0.1.0"
+version = "0.1.1"
 description = "Data MCP access broker: tiered, human-gated access to file and data stores (WebDAV, OneDrive) across providers on the access-broker suite architecture."
 readme = "README.md"
 license = "GPL-3.0-or-later"

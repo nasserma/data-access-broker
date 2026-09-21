@@ -232,3 +232,29 @@ def test_gated_backend_error_envelope(ctx: BrokerContext) -> None:
 
     result = asyncio.run(ctx.execute("scratch", "Docs", "read", _boom))
     assert result["status"] == "error"
+
+
+# ---------------------------------------------------------------- list_accounts
+
+
+def test_list_accounts_names_only(ctx: BrokerContext) -> None:
+    """The D6.5 discipline: names + backend family only. Any URL,
+    username, credential, or tenant identifier in the envelope is a
+    disclosure defect."""
+    specs = _specs(ctx)
+    result = asyncio.run(specs["list_accounts"]["handler"]())
+    assert result["status"] == "ok"
+    assert {a["name"] for a in result["accounts"]} == {"scratch", "work"}
+    assert {a["backend"] for a in result["accounts"]} == {"webdav", "onedrive"}
+    body = repr(result)
+    for forbidden in ("http", "anonymous", "tenant", "token", "password", "url"):
+        assert forbidden not in body.lower()
+
+
+def test_list_accounts_is_tier1_free(ctx: BrokerContext) -> None:
+    """Discovery is Tier 1 in the spec table: no grant, no pending, no
+    wall involvement — the handler answers directly from ctx.accounts."""
+    specs = _specs(ctx)
+    assert specs["list_accounts"]["tier"] == 1
+    result = asyncio.run(specs["list_accounts"]["handler"]())
+    assert result["status"] == "ok"  # no pending/refused path exists

@@ -140,7 +140,62 @@ writes (never free) are the operative control.
 - Wildcard-bind and token-guard refusals tested
   (test_server_dual_surface.py).
 
-## 7. Rollback
+## 7. Service supervision (user-space systemd)
+
+The proven production shape (deployed on the storage host 2026-09-20):
+a user-space systemd unit, no container, no root.
+
+1. Unit file `~/.config/systemd/user/data-broker.service`:
+
+```
+[Unit]
+Description=data-access-broker (MCP access broker)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/<user>/deploy/dataAccessBroker
+Environment=DATABROKER_CONFIG=/home/<user>/deploy/dataAccessBroker/config.yaml
+EnvironmentFile=/home/<user>/deploy/dataAccessBroker/broker.env
+ExecStart=/home/<user>/deploy/dataAccessBroker/.venv/bin/python -m data_broker.run
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
+```
+
+2. Enable:
+
+```
+systemctl --user daemon-reload
+systemctl --user enable --now data-broker
+loginctl enable-linger <user>     # REQUIRED on a service host: user
+                                  # units die at last logout without it
+```
+
+3. Verify: `systemctl --user status data-broker`; `ss -tln | grep 8471`.
+
+Properties (each learned in production):
+
+- `ExecStart` calls `.venv/bin/python` directly — uv is a build-time
+  tool; runtime needs nothing but the venv.
+- `EnvironmentFile` (chmod 600) carries every secret; the unit holds
+  none. The `${VAR}` indirections in config.yaml resolve from it.
+- A config error is refuse-to-start, not a crash loop: the process
+  exits once with the error in `journalctl --user -u data-broker`,
+  systemd retries and keeps failing until the config is fixed and
+  `systemctl --user restart data-broker` is run.
+- Logs: `journalctl --user -u data-broker -f`.
+- Firewall discipline (the runbook lesson): expose the bind port
+  scoped to the client's address, never as a blanket rule; a silent
+  conntrack/teardown drop presents as CLOSE_WAIT pile-ups with clean
+  broker logs.
+
+## 8. Rollback
 
 Container rebuild to the previous image tag; grants and audit survive
 restart (SQLite + append-only JSONL). Baseline definitions persist in

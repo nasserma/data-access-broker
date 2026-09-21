@@ -17,8 +17,12 @@ deferred testing and deployment session.
    WebDAV app password or Entra registration scoped to the stores the
    broker serves. Human-account credential reuse would make the audit
    trail's principal meaningless (SECURITY.md prerequisites).
-3. access-broker-core adjacent to this repo (editable path dependency;
-   GitHub publication is the owner's separate task).
+3. access-broker-core: resolved automatically as a dependency from its
+   published repo (pinned in pyproject.toml as a git+https direct
+   reference at the released tag). A single clone of this repo + `uv
+   sync` is enough. Local development overrides: the workspace
+   [tool.uv.sources] pins the sibling checkout
+   (../accessBrokerCore, editable) — see the repo's uv docs pattern.
 4. Approval gateway (when wired): a dedicated broker bot account on
    the gateway platform; the approval-separation invariant holds
    structurally (the broker must not broker its own approval account).

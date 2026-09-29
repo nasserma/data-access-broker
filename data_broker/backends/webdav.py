@@ -146,9 +146,16 @@ class WebDAVBackend:
     async def close(self) -> None:
         await self._client.aclose()
 
-    def _client_for(self, account: str) -> tuple[WebDAVAccount, httpx.AsyncClient]:
+    def _context_for(
+        self, account: str
+    ) -> tuple[WebDAVAccount, httpx.AsyncClient, tuple[str, str]]:
         require_connected(account in self._connected)
-        return self._accounts[account], self._connected[account]
+        entry = self._accounts[account]
+        # Per-request auth is mandatory: httpx does not cache auth between
+        # requests, so every verb must send it (a one-time authed probe
+        # leaves all later calls unauthenticated -> 401 loops).
+        auth = (entry.username, entry.resolve_password())
+        return entry, self._connected[account], auth
 
     @staticmethod
     def _translate(resp: httpx.Response) -> BackendError | None:
@@ -166,10 +173,12 @@ class WebDAVBackend:
         return ProtocolError(f"HTTP {resp.status_code}")
 
     async def list(self, account: str, resource: str) -> list[NodeInfo]:
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         url = f"{entry.url}{_dav_path(resource)}"
         try:
-            resp = await client.request("PROPFIND", url, headers=_READ_HEADERS, content=_XML_PROPF)
+            resp = await client.request(
+                "PROPFIND", url, headers=_READ_HEADERS, content=_XML_PROPF, auth=auth
+            )
         except TransportError as exc:
             raise BackendUnavailable(f"unreachable: {type(exc).__name__}") from exc
         err = self._translate(resp)
@@ -178,10 +187,10 @@ class WebDAVBackend:
         return _parse_propfind(resp.text)
 
     async def read(self, account: str, resource: str) -> bytes:
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         url = f"{entry.url}{_dav_path(resource)}"
         try:
-            resp = await client.get(url)
+            resp = await client.get(url, auth=auth)
         except TransportError as exc:
             raise BackendUnavailable(f"unreachable: {type(exc).__name__}") from exc
         err = self._translate(resp)
@@ -190,10 +199,10 @@ class WebDAVBackend:
         return resp.content
 
     async def write(self, account: str, resource: str, content: bytes) -> None:
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         url = f"{entry.url}{_dav_path(resource)}"
         try:
-            resp = await client.put(url, content=content)
+            resp = await client.put(url, content=content, auth=auth)
         except TransportError as exc:
             raise BackendUnavailable(f"unreachable: {type(exc).__name__}") from exc
         err = self._translate(resp)
@@ -201,13 +210,14 @@ class WebDAVBackend:
             raise err
 
     async def move(self, account: str, src: str, dst: str) -> None:
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         url = f"{entry.url}{_dav_path(src)}"
         dest = f"{entry.url}{_dav_path(dst)}"
         try:
             resp = await client.request(
                 "MOVE",
                 url,
+                auth=auth,
                 headers={"Destination": _quote_url(dest), "Overwrite": "F"},
             )
         except TransportError as exc:
@@ -217,10 +227,10 @@ class WebDAVBackend:
             raise err
 
     async def trash(self, account: str, resource: str) -> None:
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         url = f"{entry.url}{_dav_path(resource)}"
         try:
-            resp = await client.delete(url)
+            resp = await client.delete(url, auth=auth)
         except TransportError as exc:
             raise BackendUnavailable(f"unreachable: {type(exc).__name__}") from exc
         err = self._translate(resp)
@@ -228,10 +238,10 @@ class WebDAVBackend:
             raise err
 
     async def mkdir(self, account: str, resource: str) -> None:
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         url = f"{entry.url}{_dav_path(resource)}"
         try:
-            resp = await client.request("MKCOL", url)
+            resp = await client.request("MKCOL", url, auth=auth)
         except TransportError as exc:
             raise BackendUnavailable(f"unreachable: {type(exc).__name__}") from exc
         err = self._translate(resp)
@@ -241,9 +251,9 @@ class WebDAVBackend:
     async def capabilities(self, account: str) -> dict[str, Any]:
         """Capability probing (R1): what this server supports; the boot
         guard decides the write policy from it."""
-        entry, client = self._client_for(account)
+        entry, client, auth = self._context_for(account)
         try:
-            resp = await client.request("OPTIONS", entry.url, headers={"Depth": "0"})
+            resp = await client.request("OPTIONS", entry.url, headers={"Depth": "0"}, auth=auth)
         except TransportError as exc:
             raise BackendUnavailable(f"unreachable: {type(exc).__name__}") from exc
         err = self._translate(resp)

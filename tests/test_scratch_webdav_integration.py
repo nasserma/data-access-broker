@@ -9,6 +9,11 @@ Idempotency: every path used here is derived from a run-unique suffix,
 so re-runs never collide with leftover state (RFC 4918 MKCOL refuses
 an existing collection with 405 - correct server behavior, poison for
 a naive test).
+
+Credentials: webdav_scratch.py runs WSGIDAV with --auth anonymous, so
+WEBDAV_SCRATCH_PASSWORD only needs to be set to any non-empty value
+(the backend constructs its Basic header from it; the server never
+checks it). Export e.g. WEBDAV_SCRATCH_PASSWORD=scratch for a run.
 """
 
 # SPDX-License-Identifier: GPL-3.0-or-later

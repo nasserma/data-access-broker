@@ -82,6 +82,10 @@ class RecordingCore:
     def __init__(self) -> None:
         self.reactions: list[tuple[str, str, str]] = []
         self.replies: list[tuple[str, str]] = []
+        self.lifecycle: list[str] = []
+
+    async def announce_lifecycle(self, state: str) -> None:
+        self.lifecycle.append(state)
 
     async def handle_reaction(self, sender: str, event_id: str, emoji: str) -> None:
         self.reactions.append((sender, event_id, emoji))
@@ -112,7 +116,12 @@ async def test_transport_send_returns_event_id() -> None:
     client = FakeNioClient(send_result=OkSend())
     t = MatrixTransport(client, ROOM_ID)
     assert await t.send_message("approve #3") == "$evt-1"
-    assert client.calls[0] == ("send", ROOM_ID, "m.room.message", {"msgtype": "m.text", "body": "approve #3"})
+    # D6.1 parity: the content carries the plain body AND the derived
+    # formatted_body (identical content; Element renders the HTML).
+    assert client.calls[0][3]["msgtype"] == "m.text"
+    assert client.calls[0][3]["body"] == "approve #3"
+    assert client.calls[0][3]["format"] == "org.matrix.custom.html"
+    assert client.calls[0][3]["formatted_body"] == "approve #3"  # escaped, no markers
 
 
 async def test_transport_send_no_event_id_raises() -> None:

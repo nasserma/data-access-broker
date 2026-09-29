@@ -48,11 +48,26 @@ class MatrixTransport(GatewayTransport):
 
     async def send_message(self, text: str) -> str:
         """Send one room message (m.text); returns the event id or
-        raises TransportError on nio failure."""
+        raises TransportError on nio failure.
+
+        D6.1 parity (port of the v1 nextcloud broker's renderer): the
+        text is markdown composed by the core; this transport derives
+        formatted_body HTML from it (gateways.markdown_render) and sends
+        both — clients that render formatted_body (Element) show
+        bold/code, everything else falls back to the plain body, which
+        carries identical content.
+        """
+        from data_broker.gateways.markdown_render import text_to_html  # noqa: PLC0415
+
         response = await self._client.room_send(
             room_id=self._room_id,
             message_type="m.room.message",
-            content={"msgtype": "m.text", "body": text},
+            content={
+                "msgtype": "m.text",
+                "body": text,
+                "format": "org.matrix.custom.html",
+                "formatted_body": text_to_html(text),
+            },
         )
         if getattr(response, "event_id", None) is None:
             raise logic.TransportError(f"Matrix send failed: {response}")
@@ -123,10 +138,12 @@ class MatrixGateway:
         self._running = True
         self._task = asyncio.create_task(self._sync_forever())
         logger.info("matrix gateway started (room=%s)", self._room_id)
+        await self._core.announce_lifecycle("started")
 
     async def stop(self) -> None:
         """Cancel the sync-loop task and close the nio client."""
         self._running = False
+        await self._core.announce_lifecycle("stopping")
         task = getattr(self, "_task", None)
         if task is not None:
             task.cancel()

@@ -119,8 +119,8 @@ stores, so a multi-instance deployment needs one agent connection.
 ### The transfer surface (/transfer) and the CLI
 
 Bulk bytes never enter LLM context. The transfer surface is a second
-MCP mount behind its own token, and the intended client for it is a
-CLI, not an agent:
+MCP mount behind its own token, and the intended clients for it are
+the CLI and the local MCP fetcher (v0.2.0) — never the agent directly:
 
 ```
 DATABROKER_TRANSFER_TOKEN=... python -m data_broker.cli fetch nextcloud-personal Documents/report.pdf
@@ -133,6 +133,30 @@ ends; a transfer-surface write refuses without an active grant
 mismatch before the backend call (verify-then-write). The transfer
 surface's read is grant-scoped even though the agent surface's read is
 free: file content is bulk-sensitive and does not ride the free lane.
+
+### The local MCP fetcher (client side, v0.2.0)
+
+Harnesses that gate shell commands (approval prompts, sandboxing)
+deadlock the CLI in unattended sessions — the only sanctioned content
+path would silently never run. The package therefore ships a minimal
+client-side stdio MCP server that exposes the same transfer path as
+two ordinary tools:
+
+```
+python -m data_broker.client_mcp
+```
+
+`fetch(account, resource)` stages the file locally and returns a
+manifest — the staged path, SHA-256, size; `push(account, resource,
+path)` verifies-then-writes. Tool results are metadata only, never
+content, so the D5 invariant holds on this surface too. It holds no
+policy, no grants, and no audit: the remote broker enforces the wall
+exactly as it does for the CLI; the fetcher only moves verified bytes.
+Token from `DATABROKER_TRANSFER_TOKEN`, broker URL from
+`DATABROKER_URL` (default `http://127.0.0.1:8471/transfer`). Both the
+CLI and the fetcher share one implementation (`data_broker/client.py`,
+the client core); the CLI is its argv door, the fetcher its MCP door.
+See DEPLOYMENT.md section 9 for harness wiring.
 
 ## The wall
 
@@ -170,12 +194,14 @@ in the store, never in config, and every mutation is itself gated.
 
     data_broker/
       config.py        YAML + env-indirected secrets; fail-closed boot
-      policy.py        the wall: cross-provider path scoping + tier table
+      policy.py       the wall: cross-provider path scoping + tier table
       token_providers.py  MSAL provider boundary (S6-2b)
-      backends/        base.py (interface), webdav.py, onedrive.py
-      gateways/        matrix gateway adapter (core factory)
-      tools.py         MCP tool surfaces (agent + transfer)
-      cli.py           the transfer CLI (fetch / push)
+      backends/       base.py (interface), webdav.py, onedrive.py
+      gateways/       matrix gateway adapter (core factory)
+      tools.py        MCP tool surfaces (agent + transfer)
+      client.py       shared client core (transport, verify, staging)
+      cli.py          the transfer CLI (fetch / push) — argv door
+      client_mcp.py   the local MCP fetcher (fetch / push) — stdio door
       server.py        MCPServer wiring, dual-surface routes
       run.py           boot ordering, refuse-to-start guards
     tests/             unit + integration + boot-path suites
@@ -183,7 +209,7 @@ in the store, never in config, and every mutation is itself gated.
 
 ## Status
 
-v0.1.1, deployed in production on a multi-instance Nextcloud
+v0.2.0, deployed in production on a multi-instance Nextcloud
 deployment (2026-09-20) and verified end-to-end live: boot, both MCP
 surfaces, free-lane reads, the human-gated Tier-2 cycle (request →
 approval room → execute), grant revocation, and SHA-verified

@@ -77,7 +77,7 @@ registration and tenant setup are also owner steps.
 
 ```
 uv sync --dev
-uv run pytest -q                 # full suite (64 passed expected)
+uv run pytest -q                 # full suite (~290 passed expected)
 uv run python -m data_broker.run # transport from config
 ```
 
@@ -208,3 +208,96 @@ Container rebuild to the previous image tag; grants and audit survive
 restart (SQLite + append-only JSONL). Baseline definitions persist in
 the store; a rollback never promotes suspended or pending baselines
 (restart-never-promotes, F-E).
+
+## 9. Client-side fetcher for AI harnesses (v0.2.0)
+
+The transfer CLI requires a shell command; harnesses that gate shell
+commands (Hermes approval prompts, sandboxed runners) deadlock the
+CLI in unattended sessions. The package therefore ships a local stdio
+MCP server that exposes the same two operations as ordinary tools —
+harnesses pre-authorize MCP tool calls, so no terminal approval is
+involved. It runs on the AGENT HOST, next to the harness.
+
+### Install (agent host)
+
+The fetcher ships in the package; it needs only the broker's transfer
+URL and token, no config file:
+
+```
+# from a checkout or the published package
+uv sync                            # or: pip install data-access-broker
+
+export DATABROKER_TRANSFER_TOKEN=<the same token the CLI uses>
+export DATABROKER_URL=http://<broker-host>:8471/transfer   # if not loopback
+```
+
+Nothing else: no broker config, no grants store, no audit — the
+remote broker enforces all of it exactly as for the CLI.
+
+### Harness wiring
+
+Any MCP-capable harness adds it as a stdio server. One entry:
+
+- generic MCP config:
+
+```json
+{"mcpServers": {"data-broker-client": {
+  "command": "<venv-python>",
+  "args": ["-m", "data_broker.client_mcp"]
+}}}
+```
+
+- Hermes (`mcp_servers` in the profile config.yaml):
+
+```yaml
+data-broker-client:
+  command: <venv-python>
+  args: ["-m", "data_broker.client_mcp"]
+  env:
+    DATABROKER_TRANSFER_TOKEN: <the transfer token>
+    DATABROKER_URL: "http://10.8.0.8:8471/transfer"
+```
+
+Caveat (Hermes-specific, verified against its MCP client docs): stdio
+MCP subprocesses inherit a FILTERED environment — only PATH/HOME/USER/
+locale/XDG plus anything explicitly listed under `env`. Profile `.env`
+values are therefore NOT inherited by the fetcher subprocess; the
+token must ride the `env` block. Since config.yaml must hold no
+secrets, use the owner's env-indirection convention if the profile
+supports `${VAR}` expansion there, or paste the token at wiring time
+and rotate per the standing token discipline (ROTATION.md).
+
+The tools exposed are exactly:
+
+- `fetch(account, resource)` — stages the file under
+  `~/.local/state/data-broker/staging/<account>/<sha256>` (0700/0600)
+  after strict base64 + sha256 verification; returns
+  `{status, exit_code, staged, sha256, size}` — a local path and
+  manifest, NEVER content. Read the staged file with normal local
+  file tools.
+- `push(account, resource, path)` — hashes the local file and sends it
+  with `expected_sha256`; the broker verifies before writing.
+
+Exit codes ride the tool result as `exit_code` (the CLI's 0-4 contract:
+0 ok, 1 local, 2 infrastructure, 3 wall-refused — request access,
+never retry as-is, 4 verification failure). Errors carry the same
+`REFUSED:`/`INFRA:` message prefixes the CLI prints.
+
+### Security posture (unchanged from the CLI)
+
+- Read grants are still required server-side; an un-granted fetch
+  returns the refused envelope (exit_code 3).
+- The fetcher holds only the transfer token, never the agent token;
+  two-token separation is untouched.
+- Nothing is staged before every verification passes; staging
+  permissions and gc (7 days / 512 MB) are identical to the CLI's.
+- The tool surface is metadata-only: content never enters the LLM
+  context through a tool result (SECURITY.md invariant 3).
+
+### Verification sequence (per deployment)
+
+1. With an active read grant: `fetch` returns ok, the staged file's
+   sha256 matches the manifest, mode 0600 under the staging dir.
+2. With no grant: `fetch` returns exit_code 3 with the refused reason.
+3. CLI regression: `python -m data_broker.cli fetch ...` still works
+   unchanged (same core, same staging).

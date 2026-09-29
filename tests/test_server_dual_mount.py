@@ -112,8 +112,20 @@ async def test_path_dispatch_routes_both_prefixes_and_404() -> None:
 
 async def test_path_dispatch_lifespan_fans_out() -> None:
     """Non-HTTP scopes drive EVERY wrapped surface's lifespan (a session
-    manager whose lifespan never ran raises on the first request)."""
+    manager whose lifespan never ran raises on the first request).
+
+    The receive channel is driven like a real ASGI lifespan: startup,
+    then shutdown — a never-ending receive (the pre-fix shape) pegged a
+    core forever in PathDispatch's pump (the known hang, root-caused
+    2026-09-28: the fake was at fault, not the dispatch)."""
     seen: list[str] = []
+    events: list[dict] = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+
+    async def receive() -> dict:
+        return events.pop(0) if events else {"type": "lifespan.shutdown"}
 
     def app_for(name: str):
         async def app(scope, receive, send) -> None:
@@ -122,7 +134,7 @@ async def test_path_dispatch_lifespan_fans_out() -> None:
         return app
 
     dispatch = PathDispatch({"/mcp": app_for("mcp"), "/transfer": app_for("xfer")})
-    await dispatch({"type": "lifespan"}, _noop_receive, _noop_send)
+    await dispatch({"type": "lifespan"}, receive, _noop_send)
     assert sorted(seen) == ["mcp", "xfer"]
 
 

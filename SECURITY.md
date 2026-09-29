@@ -28,8 +28,15 @@ Design consequences:
    classification wins over scope matching.
 3. **Bulk content never enters LLM context.** File contents move only
    through the transfer surface behind its own token, addressed by the
-   CLI; the agent surface returns metadata shapes only. Base64-through-
-   context is a design flaw, not an optimization.
+   CLI (v0.1.x) or the client-side MCP fetcher (v0.2.0); the agent
+   surface returns metadata shapes only. Base64-through-context is a
+   design flaw, not an optimization. The v0.2.0 fetcher
+   (`data_broker.client_mcp`) preserves this invariant on the client
+   side: its tool results carry a staged path and sha256 manifest
+   only, never content. The fetcher holds no policy, no grants, and no
+   audit — the broker enforces the wall for it exactly as for the CLI
+   — and its token exposure surface is the same single transfer token
+   the CLI already holds on the same host.
 4. **Two-token separation is refuse-to-start.** A missing, short, or
    agent-equal transfer token refuses the boot (config + boot re-check).
    A broker that boots without the guards cannot serve.
@@ -71,7 +78,8 @@ teeth:
 - **Local attacker:** secrets in the environment only (env-indirected
   in config; secret scrubbing in audit); staging directories 0700/0600.
 - **Network exposure:** wildcard bind host is refuse-to-start; the
-  transfer surface is addressed by the CLI holding its own token only.
+  transfer surface is addressed only by clients holding its token (the
+  CLI and the local MCP fetcher, `data_broker.client_mcp`).
 
 ## Deployment prerequisites
 

@@ -105,6 +105,18 @@ def test_main_serves_with_gateway_threaded(
     monkeypatch.setenv("DATABROKER_TRANSFER_TOKEN", "t" * 40)
     monkeypatch.setenv("DATABROKER_GATEWAY_TOKEN", "g" * 40)
 
+    # The fail-closed boot-connect (F1-parity) probes every configured
+    # WebDAV account with a real OPTIONS request; this test wires the
+    # boot path, not a live store, so the probe is stubbed to succeed
+    # (pre-fix: it failed on 127.0.0.1:8466 ConnectError, a live-store
+    # dependency in a wiring test — the persistent failure).
+    from data_broker.backends.webdav import WebDAVBackend
+
+    async def _fake_connect(self, account):  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(WebDAVBackend, "connect", _fake_connect)
+
     def fake_builder(core, fields, approver):
         class FakeTransport:
             async def send_message(self, text: str) -> str:

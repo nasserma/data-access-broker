@@ -3,6 +3,31 @@
 All notable changes to this project are documented in this file.
 Format based on Keep a Changelog; versioning is SemVer.
 
+## [0.2.0] — 2026-09-28
+
+- Client-side MCP fetcher (`data_broker.client_mcp`): a minimal stdio
+  MCP server exposing `fetch` and `push` over the transfer path, for
+  AI harnesses that gate shell commands (approval prompts, sandboxing)
+  — the CLI deadlocked in unattended sessions when its terminal
+  approval timed out (found live 2026-09-28). Tool results carry the
+  staged path + sha256 manifest only, never content; the D5 invariant
+  holds on the client surface too. No policy, grants, or audit live
+  client side: the remote broker enforces the wall unchanged.
+- Shared client core (`data_broker.client`): the transport, SHA-256
+  verify-then-stage/verify-then-write logic, and staging gc extracted
+  from the CLI. One implementation, two doors (CLI argv, MCP stdio).
+  The CLI is now a thin wrapper; identical flags, exit codes 0-4, and
+  single-line stdout contract. The full v0.1.x import surface is
+  re-exported from `data_broker.cli` for back-compat.
+- New test batteries: client MCP tool surface (manifest-only results,
+  refusal/verification arms, live stdio subprocess handshake) and
+  client transport error arms (real HTTP against a stub server).
+- Test repairs (pre-existing, root-caused): the dual-mount lifespan
+  fake never delivered shutdown and hung the suite (the recorded
+  known-hanger; the fake was at fault, not the dispatch), and the
+  boot-wiring test depended on a live WebDAV store at 127.0.0.1:8466
+  (the connect probe is now stubbed in that wiring test).
+
 ## [0.1.1] — 2026-09-20
 
 - Account-name uniqueness enforced at load: duplicate names within a

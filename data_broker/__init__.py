@@ -6,3 +6,4 @@ v2 lineage of nextcloud-access-broker; inherits its design discipline
 (D5 dual-surface, content-addressed staging, sha verification) and
 receives the security architecture through access-broker-core.
 """
+__version__ = "0.2.0"
